@@ -1,0 +1,12 @@
+.gradle/
+build/
+.idea/
+*.iml
+local.properties
+.kotlin/
+.superpowers/
+xcuserdata/
+DerivedData/
+*.xcodeproj/
+.DS_Store
+captures/
