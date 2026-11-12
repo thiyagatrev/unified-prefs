@@ -48,3 +48,11 @@ by one package therefore also runs in the other two commands after merge.
   `watchString` delivering `String`, `MainViewControllerKt.MainViewController()`.
 - `scripts/android-seed.sh` taps fixed coordinates on the Pixel 5 layout of the before-state app.
   Run it once, on a fresh install, with the app in front.
+
+## Found in Wave 2
+
+- The iOS simulator holds recent `UserDefaults` writes in memory and can lose them when
+  `simctl install` replaces an app, because the data container moves. In three of three
+  trials only the first key written was on disk before the install. `scripts/ios-install.sh`
+  now restarts the simulator before installing, which forces the write. Without this the
+  upgrade test fails intermittently for a reason unrelated to the migration code.

@@ -9,4 +9,9 @@ if xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Deb
 else
     grep -E "error:|^e: |What went wrong" -A2 ios-build.log | head -40; exit 1
 fi
+# The simulator keeps recent UserDefaults writes in memory and loses them when an install
+# moves the app's data container. A clean restart forces them to disk first, as a real
+# device does before an app update.
+xcrun simctl shutdown "$IOS_SIM" >/dev/null 2>&1 || true
+boot_ios
 xcrun simctl install "$IOS_SIM" iosApp/build/Build/Products/Debug-iphonesimulator/iosApp.app
