@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to run this plan. Each work package (WP) is one agent in its own git worktree. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Measure the UnifiedPrefs design with 1000 preferences of every type, in a typical (~330 KB) and a heavy (~3.1 MB) profile, against the old stores on the same data, on both platforms.
+**Goal:** Measure the UnifiedPrefs design with 200 preferences of every type, in a typical (~70 KB) and a heavy (~2.5 MB) profile, against the old stores on the same data, on both platforms.
 
 **Architecture:**
-- A Python generator writes the 1000 keys into the Kotlin registry, plus the old-store files for each profile.
+- A Python generator writes the 200 keys into the Kotlin registry, plus the old-store files for each profile.
 - `:storage` gains four value types, a save counter, a checksum and a benchmark routine.
 - The iOS migration walks the registry instead of three hand-written keys.
 - Both apps get a benchmark launch mode.
@@ -30,7 +30,7 @@ Wave 2  WP-5  bench routine + Android app ┐ parallel
 Wave 3  WP-7  bench.sh, 4 runs, FINDINGS  (main session)
 ```
 
-- **Wave 0** settles every build question and proves the two risky facts: that a 1000-key Kotlin object compiles on every target, and how to seed the iOS old store.
+- **Wave 0** settles every build question and proves the two risky facts: that a large Kotlin key object compiles (proven with 1000 keys) on every target, and how to seed the iOS old store.
 - **Waves 1 and 2** are written for Haiku-class models. Each package has exclusive files, fixed signatures, named tests with their assertions, and exact commands.
 - **Wave 3** is interactive device work and analysis, done by the main session.
 
@@ -56,21 +56,21 @@ If a package reports `BLOCKED` twice, re-dispatch it on a Sonnet-class model.
 ## Global constraints
 
 - Everything in the earlier plan's Global constraints still holds: package names, versions, one DataStore per process, legacy file `app_prefs`, DataStore file `app.preferences_pb`, emulator `Pixel_5_API_35`, simulator `iPhone 17`.
-- **1000 generated keys:**
+- **200 generated keys:**
 
   | Type | Count |
   |---|---|
-  | Boolean | 350 |
-  | Int | 200 |
-  | Long | 120 |
-  | Float | 80 |
-  | Double | 40 |
-  | String, short | 150 |
-  | String, medium | 30 |
-  | String, large | 10 |
-  | String set | 20 |
+  | Boolean | 70 |
+  | Int | 40 |
+  | Long | 24 |
+  | Float | 16 |
+  | Double | 8 |
+  | String, short | 30 |
+  | String, medium | 6 |
+  | String, large | 2 |
+  | String set | 4 |
 
-- **Profiles:** `typical` and `heavy`. Only the 10 large strings differ: 10–40 KB in typical, 200–400 KB in heavy.
+- **Profiles:** `typical` and `heavy`. Only the 2 large strings differ: 10–40 KB each in typical, 1.0–1.5 MB each in heavy.
 - **Double keys** appear in the iOS old store only. `SharedPreferences` has no Double type.
 - **No new dependencies** in Gradle, Swift Package Manager or Python.
 - **Normal launches are unchanged.** Without a bench flag, both apps behave exactly as at `210b356`. The existing upgrade, fresh-install and sync checks must still pass.
@@ -82,7 +82,7 @@ If a package reports `BLOCKED` twice, re-dispatch it on a Sonnet-class model.
 2. **A Float written to the XML as text** must parse back to the identical 32-bit value; a Float in the plist is stored as a double (WP-1 self-check `floatsRoundTrip`).
 3. **An iOS number stored as the wrong NSNumber kind**, such as a real in an Int key, must migrate by the registry's type and not crash (WP-4 test `readsNumberByRegistryType`).
 4. **Benchmark writes must not change the checksum.** The benchmark writes only `PrefKeys.benchInt` and `PrefKeys.benchText`, never a generated key (WP-5 test `measureLeavesGeneratedValuesUntouched`).
-5. **A 1000-key object** must not exceed the JVM 64 KB static-initialiser limit (proven in WP-0 step 3; the fallback is defined there).
+5. **A large key object** must not exceed the JVM 64 KB static-initialiser limit. Wave 0 proved 1000 keys in one object compile on every target, so 200 is well within it.
 
 ---
 
@@ -115,32 +115,19 @@ object PrefKeys {
 
 `PrefKeysTest.storedNamesMatchTheKeysTable` becomes: the first five names are `dark_mode, launch_count, user_name, bench_int, bench_text`, and `allNames.size == 5 + GeneratedKeys.all.size`.
 
-### R2. Generated keys, grouped by feature — PLACEHOLDER in Wave 0, REAL from WP-1
+### R2. Generated keys — `storage/src/commonMain/.../GeneratedKeys.kt` — PLACEHOLDER in Wave 0, REAL from WP-1
 
-Keys are grouped the way a real app's features would own them, one `object` per feature, all in
-`:storage`. Constructors stay `internal`, so no other module can declare a key. Callers use either
-`repo.getX(SettingsKeys.someKey)` or a getter/setter facade such as `LegacyPrefs`. Both go through
-the same repository.
-
-Files, all in package `com.example.unifiedprefs.storage`:
-- `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/keys/<Group>.kt`, one per group.
-- `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, the combined list.
+All 200 generated keys sit in one `object`, in package `com.example.unifiedprefs.storage`. Splitting
+keys into per-feature objects once a registry grows large is advice for the Medium post, not
+something this sample builds.
 
 ```kotlin
-object SettingsKeys {                 // likewise OnboardingKeys, ProfileKeys, SyncKeys, CacheKeys,
-    val feature_flag_0000 = BoolKey("feature_flag_0000", false)   // NotificationKeys, PaymentKeys,
-    // ... this group's keys, in generator order                  // AnalyticsKeys
+object GeneratedKeys {
+    val feature_flag_0000 = BoolKey("feature_flag_0000", false)
+    // ... 200 vals, in the generator's order
     val all: List<PrefKey> = listOf(...)
 }
-object GeneratedKeys {
-    val all: List<PrefKey> = SettingsKeys.all + OnboardingKeys.all + ProfileKeys.all + SyncKeys.all +
-        CacheKeys.all + NotificationKeys.all + PaymentKeys.all + AnalyticsKeys.all
-}
 ```
-
-- **Group assignment:** the key with index `i` within its type goes to group `i % 8`, in the order
-  Settings, Onboarding, Profile, Sync, Cache, Notification, Payment, Analytics. Every group then
-  holds a mix of types, about 125 keys each.
 
 - **Names by type** (`NNNN` is a zero-padded index within its type):
 
@@ -157,8 +144,7 @@ object GeneratedKeys {
   | Set | `tag_set_NNNN` |
 
 - **Defaults:** `false`, `0`, `0L`, `0f`, `0.0`, `""`, `emptySet()`.
-- **Stored names** are the names above, unchanged by grouping, so the old stores and the checksum do not depend on the groups.
-- **Wave 0 placeholder:** `object GeneratedKeys { val all: List<PrefKey> = emptyList() }`, with no group files. WP-1 writes the group files and replaces `GeneratedKeys.kt`.
+- **Wave 0 placeholder:** `object GeneratedKeys { val all: List<PrefKey> = emptyList() }`. WP-1 replaces the whole file.
 
 ### R3. Repository additions — `PrefsRepository.kt` — STUB in Wave 0, REAL from WP-2
 
@@ -260,7 +246,7 @@ Ruling: the iOS baseline `saveMs` times the call plus `synchronize()`. `UserDefa
 ### R7. Generator — `tools/genprefs.py` — REAL from WP-1
 
 ```
-python3 -I tools/genprefs.py --kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage
+python3 -I tools/genprefs.py --kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt
 python3 -I tools/genprefs.py --profile <typical|heavy> --out build/genprefs
 python3 -I tools/genprefs.py --self-check
 ```
@@ -269,12 +255,12 @@ python3 -I tools/genprefs.py --self-check
 
 | File | Content |
 |---|---|
-| `app_prefs.xml` | Android old store: 960 generated keys (no Doubles) plus `dark_mode=true`, `launch_count=3`, `user_name=Asha` |
-| `legacy.plist` | iOS old store, binary plist: all 1000 keys plus `isDarkMode=true`, `launchCount=3`, `userName=Asha` |
+| `app_prefs.xml` | Android old store: 192 generated keys (no Doubles) plus `dark_mode=true`, `launch_count=3`, `user_name=Asha` |
+| `legacy.plist` | iOS old store, binary plist: all 200 keys plus `isDarkMode=true`, `launchCount=3`, `userName=Asha` |
 | `expected-android.txt`, `expected-ios.txt` | the R4 checksum over `GeneratedKeys.all`, with Double keys at their defaults for Android |
 | `sizes.txt` | the total UTF-8 bytes of all values |
 
-Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
+Sizes must fall within typical 30–120 KB and heavy 2.0–3.2 MB. Throughout, KB = 1024 bytes and MB = 1024 × 1024 bytes.
 
 - **Seed:** `random.Random(20261112)`. Both profiles draw the same values for every key except the large strings, which use their own child RNG per profile.
 - **Android XML format:** the one `SharedPreferences` writes:
@@ -336,13 +322,12 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
 
 ### WP-1: Generator
 
-**Owns:** `tools/genprefs.py`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/keys/` (new), `.gitignore` (add `build/genprefs/` only).
+**Owns:** `tools/genprefs.py`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, `.gitignore` (add `build/genprefs/` only).
 
 **Produces:** R7 and the real R2.
 
 - [ ] **Step 1:** Write `--self-check` first. It runs these checks in memory and exits non-zero on any failure, printing which one:
   - `countsMatch`: per-type counts equal Global constraints.
-  - `groupsCoverAllKeysOnce`: the 8 groups together hold all 1000 keys, each exactly once, and each group holds at least 5 of the 9 type kinds.
   - `namesUniqueAndAscii`.
   - `deterministic`: two generations give identical bytes for the XML, the plist and the Kotlin file.
   - `xmlRoundTrip`: parse `app_prefs.xml` with `xml.etree` and get back every value, including `<`, `&`, quotes, newlines, emoji and Tamil.
@@ -355,12 +340,12 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
   - `setsAscii`: every set element is ASCII.
 - [ ] **Step 2:** Run `python3 -I tools/genprefs.py --self-check`. Expected: FAIL (nothing implemented).
 - [ ] **Step 3:** Implement R7. Medium strings mix token-like base64 text and small JSON objects. Large strings are JSON arrays of objects (`{"id":…,"title":…,"tags":[…]}`) grown to the target size.
-- [ ] **Step 4:** Run `--self-check`. Expected: `self-check: 12/12 ok`.
+- [ ] **Step 4:** Run `--self-check`. Expected: `self-check: 11/11 ok`.
 - [ ] **Step 5:**
-  1. Run `--kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage`. It writes `GeneratedKeys.kt` and `keys/<Group>.kt`.
+  1. Run `--kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`.
   2. Run `--profile typical --out build/genprefs` and `--profile heavy --out build/genprefs`.
-  3. Run R9's storage check. Expected: it passes, and `PrefKeysTest` reports 1005 names.
-- [ ] **Step 6:** Commit `feat(tools): generate 1000 preferences and old-store fixtures`.
+  3. Run R9's storage check. Expected: it passes, and `PrefKeysTest` reports 205 names.
+- [ ] **Step 6:** Commit `feat(tools): generate 200 preferences and old-store fixtures`.
 
 ### WP-2: Repository types and save counter
 

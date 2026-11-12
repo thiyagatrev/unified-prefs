@@ -16,11 +16,27 @@ a heavy one:
 3. How long can a single change sit in memory before it is on disk (the crash-loss window)?
 4. Does fast repeated input (typing) pile up disk work?
 
+## Why 200 keys, in one object
+
+200 is a believable count for a mid-size app, and one object keeps the sample plain. The sample
+deliberately does not build per-feature key objects. Instead the post gives that as advice:
+
+- **The real JVM limit is on parameters, not fields.** A method or constructor takes at most 255
+  parameters, so a *data class* cannot hold hundreds of keys. An `object` can: Wave 0 compiled 1000
+  keys in one object on every target.
+- **The reason to split is people, not the compiler.** Past a few hundred keys, one file means merge
+  conflicts, no clear ownership and dead keys nobody dares delete. Then split keys into one
+  `object` per feature, still inside the storage module so constructors stay `internal`, with one
+  combined list for the migration.
+- **Callers do not change when keys are split.** Native code uses a getter/setter wrapper over the
+  repository (as `LegacyPrefs` does), and code that wants direct access uses the key objects. Both
+  read the same in-memory copy.
+
 ## Scope
 
 In scope:
-- 1000 generated preferences covering Boolean, Int, Long, Float, Double, String and string set.
-- Two size profiles over the same 1000 keys: **typical** (about 330 KB) and **heavy** (about 3.1 MB).
+- 200 generated preferences covering Boolean, Int, Long, Float, Double, String and string set.
+- Two size profiles over the same 200 keys: **typical** (about 70 KB) and **heavy** (about 2.5 MB).
 - New value types in the repository, a registry-driven iOS migration, a benchmark launch mode, and
   scripts that seed the old stores and collect results.
 - Baseline measurements of the old stores on the same data.
@@ -37,32 +53,32 @@ gives byte-identical output.
 
 | Type | Count | Values |
 |---|---|---|
-| Boolean | 350 | true / false |
-| Int | 200 | includes 0, negatives, `Int.MIN_VALUE`, `Int.MAX_VALUE` |
-| Long | 120 | timestamps in ms, includes `Long.MIN_VALUE`, `Long.MAX_VALUE` |
-| Float | 80 | values exactly representable as 32-bit floats; no NaN or infinity |
-| Double | 40 | iOS only (see below) |
-| String, short | 150 | 0–64 chars; includes the empty string |
-| String, medium | 30 | 1–4 KB: token-like strings and small JSON |
-| String, large | 10 | typical: 10–40 KB JSON; heavy: 200–400 KB JSON |
-| String set | 20 | 3–50 short strings each |
-| **Total** | **1000** | |
+| Boolean | 70 | true / false |
+| Int | 40 | includes 0, negatives, `Int.MIN_VALUE`, `Int.MAX_VALUE` |
+| Long | 24 | timestamps in ms, includes `Long.MIN_VALUE`, `Long.MAX_VALUE` |
+| Float | 16 | values exactly representable as 32-bit floats; no NaN or infinity |
+| Double | 8 | iOS only (see below) |
+| String, short | 30 | 0–64 chars; includes the empty string |
+| String, medium | 6 | 1–4 KB: token-like strings and small JSON |
+| String, large | 2 | typical: 10–40 KB JSON; heavy: 1.0–1.5 MB JSON |
+| String set | 4 | 3–50 short strings each |
+| **Total** | **200** | |
 
 Strings include non-ASCII text (emoji, Tamil, CJK) and characters XML and plists must escape
 (`<`, `&`, quotes, newlines), because real names and cached JSON contain them.
 
 Names look like real keys (`feature_flag_0042`, `last_sync_ts_017`). The two profiles use the same
-1000 keys; only the 10 large strings change size.
+200 keys; only the 2 large strings change size.
 
 **Double on Android.** `SharedPreferences` has no Double type, so the Android old store holds no
-Double keys; those 40 keys read their defaults on Android after migration. iOS holds all 1000. The
+Double keys; those 8 keys read their defaults on Android after migration. iOS holds all 200. The
 expected checksum is therefore computed per platform.
 
 ### Generated outputs
 
 | Output | Used by |
 |---|---|
-| `storage/src/commonMain/.../keys/<Group>.kt`: 8 feature objects with about 125 typed keys each, and `GeneratedKeys.kt` combining them into `val all: List<PrefKey>` | Repository, migration, benchmark |
+| `storage/src/commonMain/.../GeneratedKeys.kt`: one `object GeneratedKeys` with 200 typed keys and `val all: List<PrefKey>` | Repository, migration, benchmark |
 | `build/genprefs/<profile>/app_prefs.xml` | Seeding the Android old store |
 | `build/genprefs/<profile>/legacy.plist` | Seeding the iOS old store |
 | `build/genprefs/<profile>/expected-<platform>.txt` | The checksum the app must report |
@@ -78,7 +94,7 @@ it parses the XML and plist it wrote and confirms they decode to the values it g
   keys set it to `isDarkMode`, `launchCount` and `userName`.
 - New key classes `LongKey`, `FloatKey`, `DoubleKey` and `StringSetKey`, with `internal`
   constructors like the existing three.
-- `PrefKeys` keeps its three demo keys. The generated keys are grouped by feature, one `object` per group (`SettingsKeys`, `PaymentKeys` and so on), all inside `:storage` so their constructors stay `internal`. `GeneratedKeys.all` combines the groups, and
+- `PrefKeys` keeps its three demo keys. The generated keys live in one `object GeneratedKeys`, and
   `allKeys` lists both.
 
 ### Repository (`PrefsRepository.kt`)
