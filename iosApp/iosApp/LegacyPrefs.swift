@@ -1,25 +1,26 @@
 import Foundation
+import Shared
 
-// Before-state storage: plain UserDefaults, the legacy iOS prefs the migration reads from.
+// Native prefs facade over the shared Kotlin storage. Public surface unchanged; storage is IosStorage.
 final class LegacyPrefs {
     static let shared = LegacyPrefs()
 
-    private let defaults = UserDefaults.standard
+    private var repo: PrefsRepository { IosStorage.shared.repo }
 
     private init() {}
 
     var isDarkMode: Bool {
-        get { defaults.bool(forKey: "isDarkMode") }
-        set { defaults.set(newValue, forKey: "isDarkMode") }
+        get { repo.getBoolean(key: PrefKeys.shared.darkMode) }
+        set { repo.putBoolean(key: PrefKeys.shared.darkMode, value: newValue) }
     }
 
     var launchCount: Int {
-        get { defaults.integer(forKey: "launchCount") }
-        set { defaults.set(newValue, forKey: "launchCount") }
+        get { Int(repo.getInt(key: PrefKeys.shared.launchCount)) }
+        set { repo.putInt(key: PrefKeys.shared.launchCount, value: Int32(newValue)) }
     }
 
     var userName: String {
-        get { defaults.string(forKey: "userName") ?? "" }
-        set { defaults.set(newValue, forKey: "userName") }
+        get { repo.getString(key: PrefKeys.shared.userName) }
+        set { repo.putString(key: PrefKeys.shared.userName, value: newValue) }
     }
 }
