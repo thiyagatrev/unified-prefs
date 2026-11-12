@@ -30,16 +30,19 @@ import com.example.unifiedprefs.storage.PrefsRepository
 /** Contract C6. */
 @Composable
 fun SharedSettingsScreen(repo: PrefsRepository, modifier: Modifier = Modifier) {
-    val dark by repo.observeBoolean(PrefKeys.darkMode)
+    val dark by remember(repo) { repo.observeBoolean(PrefKeys.darkMode) }
         .collectAsState(initial = repo.getBoolean(PrefKeys.darkMode))
-    val observedName by repo.observeString(PrefKeys.userName)
+    val observedName by remember(repo) { repo.observeString(PrefKeys.userName) }
         .collectAsState(initial = repo.getString(PrefKeys.userName))
-    val count by repo.observeInt(PrefKeys.launchCount)
+    val count by remember(repo) { repo.observeInt(PrefKeys.launchCount) }
         .collectAsState(initial = repo.getInt(PrefKeys.launchCount))
 
     var name by remember { mutableStateOf(repo.getString(PrefKeys.userName)) }
     LaunchedEffect(observedName) {
-        if (observedName != name) name = observedName
+        // Skip a value memory has already moved past, so fast typing never shows an older name.
+        if (observedName == repo.getString(PrefKeys.userName) && observedName != name) {
+            name = observedName
+        }
     }
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {

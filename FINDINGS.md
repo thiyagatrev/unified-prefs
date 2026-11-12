@@ -78,12 +78,13 @@ No baseline was measured for `SharedPreferences` or `NSUserDefaults`, so these a
 | Host | Tests | Result |
 |---|---|---|
 | JVM | 13 | pass |
-| Android host (Robolectric) | 18 | pass |
+| Android host (Robolectric) | 19 | pass |
 | iOS simulator | 18 | pass |
 
 They cover defaults, immediate read-after-write, ordered saves, the Android singleton, both
 migrations, clamping of an out-of-range iOS integer, that each migration runs once, a failed save,
-and (JVM only) an unreadable store file.
+(JVM only) an unreadable store file, and (Android only) that a test reset closes the store so the
+same file can be opened again.
 
 ## Problems found
 
@@ -120,10 +121,18 @@ and (JVM only) an unreadable store file.
 The rewritten save path was re-run through the upgrade, fresh-install and sync checks on both
 platforms after the fix.
 
-Smaller points the review raised and that are **not** fixed: the Swift `LegacyPrefs` traps on a
-launch count above the 32-bit range; the Compose screens create a new Flow on each recomposition;
-iOS watchers are not cancelled if `onAppear` runs twice; `resetStorageForTest()` leaves the old
-DataStore open; and a text field can briefly show an older value before correcting itself.
+The five smaller points the review raised were fixed afterwards:
+
+| Point | Fix | How it was checked |
+|---|---|---|
+| Swift `LegacyPrefs` trapped on a launch count above the 32-bit range | Clamps to the 32-bit range instead | Build only |
+| Compose screens created a new Flow on each recomposition | Flows are remembered per repository | Build, and the sync checks below |
+| iOS watchers were not cancelled if `onAppear` ran twice | Earlier watchers are cancelled first | Build only; `onAppear` never ran twice in the checks |
+| `resetStorageForTest()` left the old DataStore open | The store and saver share a parent job that the reset cancels | New Android host test, failing first with "multiple DataStores active for the same file" |
+| A text field could briefly show an older name | A watched value is shown only if memory still holds it | Fast typing in each field on both platforms; the glitch itself was never observed |
+
+After these fixes the upgrade (3 → 4 → 5), two-way sync with fast typing, and relaunch checks
+were run again on the Android emulator and the iOS simulator, and passed.
 
 ## Design points that held up
 

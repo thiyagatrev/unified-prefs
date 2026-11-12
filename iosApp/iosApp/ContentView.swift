@@ -35,21 +35,29 @@ struct ContentView: View {
         .padding()
         .preferredColorScheme(isDark ? .dark : .light)
         .onAppear {
+            // onAppear can run more than once; drop any earlier watchers first.
+            stopWatching()
             let repo = IosStorage.shared.repo
             darkWatch = repo.watchBoolean(key: PrefKeys.shared.darkMode) { value in
                 isDark = value.boolValue
             }
             nameWatch = repo.watchString(key: PrefKeys.shared.userName) { value in
-                userName = value
+                // Skip a value memory has already moved past, so fast typing never shows an older name.
+                if value == LegacyPrefs.shared.userName { userName = value }
             }
             countWatch = repo.watchInt(key: PrefKeys.shared.launchCount) { value in
                 count = Int(value.intValue)
             }
         }
-        .onDisappear {
-            darkWatch?.cancel()
-            nameWatch?.cancel()
-            countWatch?.cancel()
-        }
+        .onDisappear { stopWatching() }
+    }
+
+    private func stopWatching() {
+        darkWatch?.cancel()
+        nameWatch?.cancel()
+        countWatch?.cancel()
+        darkWatch = nil
+        nameWatch = nil
+        countWatch = nil
     }
 }

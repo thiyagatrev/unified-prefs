@@ -39,11 +39,11 @@ class MainActivity : ComponentActivity() {
         val prefs = LegacyPrefs(applicationContext)
         setContent {
             val repo = prefsRepository(this)
-            val dark by repo.observeBoolean(PrefKeys.darkMode)
+            val dark by remember(repo) { repo.observeBoolean(PrefKeys.darkMode) }
                 .collectAsState(initial = repo.getBoolean(PrefKeys.darkMode))
-            val storedName by repo.observeString(PrefKeys.userName)
+            val storedName by remember(repo) { repo.observeString(PrefKeys.userName) }
                 .collectAsState(initial = repo.getString(PrefKeys.userName))
-            val count by repo.observeInt(PrefKeys.launchCount)
+            val count by remember(repo) { repo.observeInt(PrefKeys.launchCount) }
                 .collectAsState(initial = repo.getInt(PrefKeys.launchCount))
             MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -54,8 +54,9 @@ class MainActivity : ComponentActivity() {
                             count = count,
                             onDarkChange = { prefs.darkMode = it },
                             onNameChange = { prefs.userName = it },
+                            latestName = { prefs.userName },
                         )
-                        SharedSettingsScreen(prefsRepository(this@MainActivity))
+                        SharedSettingsScreen(repo)
                     }
                 }
             }
@@ -70,11 +71,13 @@ fun NativeSettings(
     count: Int,
     onDarkChange: (Boolean) -> Unit,
     onNameChange: (String) -> Unit,
+    latestName: () -> String,
 ) {
     var name by remember { mutableStateOf(storedName) }
-    // Follow the observed value only when it differs, so typing is not overwritten.
+    // Follow the observed value only when it is still the latest, so typing is never overwritten
+    // by an older value that arrives late.
     LaunchedEffect(storedName) {
-        if (name != storedName) name = storedName
+        if (storedName == latestName() && name != storedName) name = storedName
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Native (LegacyPrefs)", style = MaterialTheme.typography.titleMedium)

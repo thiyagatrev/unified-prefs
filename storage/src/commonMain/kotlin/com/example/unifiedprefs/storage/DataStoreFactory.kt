@@ -8,16 +8,19 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import okio.Path.Companion.toPath
 
 fun createDataStore(
     migrations: List<DataMigration<Preferences>>,
+    scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     producePath: () -> String,
 ): DataStore<Preferences> = PreferenceDataStoreFactory.createWithPath(
     // An unreadable file would otherwise throw on every launch; start from empty instead.
     corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
     migrations = migrations,
+    scope = scope,
     produceFile = { producePath().toPath() },
 )
 

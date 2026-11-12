@@ -14,9 +14,10 @@ final class LegacyPrefs {
         set { repo.putBoolean(key: PrefKeys.shared.darkMode, value: newValue) }
     }
 
+    // Storage holds a 32-bit Int; clamp instead of trapping on a larger value.
     var launchCount: Int {
         get { Int(repo.getInt(key: PrefKeys.shared.launchCount)) }
-        set { repo.putInt(key: PrefKeys.shared.launchCount, value: Int32(newValue)) }
+        set { repo.putInt(key: PrefKeys.shared.launchCount, value: Int32(clamping: newValue)) }
     }
 
     var userName: String {

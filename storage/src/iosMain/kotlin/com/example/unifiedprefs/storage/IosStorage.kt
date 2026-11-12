@@ -9,7 +9,7 @@ import platform.Foundation.NSUserDomainMask
 object IosStorage {
     val repo: PrefsRepository by lazy {
         PrefsRepository(
-            createDataStore(listOf(UserDefaultsMigration()), ::iosStorePath),
+            createDataStore(listOf(UserDefaultsMigration()), producePath = ::iosStorePath),
             defaultStorageScope(),
         )
     }

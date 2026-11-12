@@ -66,4 +66,15 @@ class AndroidStorageTest {
         resetStorageForTest()
         assertSame(prefsRepository(context), prefsRepository(context))
     }
+
+    @Test
+    fun resetClosesTheStoreSoTheNextRepositoryCanOpenTheSameFile() = runBlocking {
+        resetStorageForTest()
+        val first = prefsRepository(context)
+        first.putString(PrefKeys.userName, "Bo")
+        first.flush()
+        resetStorageForTest()
+        assertEquals("Bo", prefsRepository(context).getString(PrefKeys.userName))
+        resetStorageForTest()
+    }
 }
