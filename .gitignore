@@ -12,3 +12,4 @@ DerivedData/
 captures/
 *.log
 .claude/
+build/genprefs/
