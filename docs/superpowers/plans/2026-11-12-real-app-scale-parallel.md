@@ -115,15 +115,32 @@ object PrefKeys {
 
 `PrefKeysTest.storedNamesMatchTheKeysTable` becomes: the first five names are `dark_mode, launch_count, user_name, bench_int, bench_text`, and `allNames.size == 5 + GeneratedKeys.all.size`.
 
-### R2. Generated keys — `storage/src/commonMain/.../GeneratedKeys.kt` — PLACEHOLDER in Wave 0, REAL from WP-1
+### R2. Generated keys, grouped by feature — PLACEHOLDER in Wave 0, REAL from WP-1
+
+Keys are grouped the way a real app's features would own them, one `object` per feature, all in
+`:storage`. Constructors stay `internal`, so no other module can declare a key. Callers use either
+`repo.getX(SettingsKeys.someKey)` or a getter/setter facade such as `LegacyPrefs`. Both go through
+the same repository.
+
+Files, all in package `com.example.unifiedprefs.storage`:
+- `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/keys/<Group>.kt`, one per group.
+- `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, the combined list.
 
 ```kotlin
-object GeneratedKeys {
-    val feature_flag_0000 = BoolKey("feature_flag_0000", false)
-    // ... 1000 vals, in the generator's order
+object SettingsKeys {                 // likewise OnboardingKeys, ProfileKeys, SyncKeys, CacheKeys,
+    val feature_flag_0000 = BoolKey("feature_flag_0000", false)   // NotificationKeys, PaymentKeys,
+    // ... this group's keys, in generator order                  // AnalyticsKeys
     val all: List<PrefKey> = listOf(...)
 }
+object GeneratedKeys {
+    val all: List<PrefKey> = SettingsKeys.all + OnboardingKeys.all + ProfileKeys.all + SyncKeys.all +
+        CacheKeys.all + NotificationKeys.all + PaymentKeys.all + AnalyticsKeys.all
+}
 ```
+
+- **Group assignment:** the key with index `i` within its type goes to group `i % 8`, in the order
+  Settings, Onboarding, Profile, Sync, Cache, Notification, Payment, Analytics. Every group then
+  holds a mix of types, about 125 keys each.
 
 - **Names by type** (`NNNN` is a zero-padded index within its type):
 
@@ -140,7 +157,8 @@ object GeneratedKeys {
   | Set | `tag_set_NNNN` |
 
 - **Defaults:** `false`, `0`, `0L`, `0f`, `0.0`, `""`, `emptySet()`.
-- **Wave 0 placeholder:** `object GeneratedKeys { val all: List<PrefKey> = emptyList() }`. WP-1 replaces the whole file.
+- **Stored names** are the names above, unchanged by grouping, so the old stores and the checksum do not depend on the groups.
+- **Wave 0 placeholder:** `object GeneratedKeys { val all: List<PrefKey> = emptyList() }`, with no group files. WP-1 writes the group files and replaces `GeneratedKeys.kt`.
 
 ### R3. Repository additions — `PrefsRepository.kt` — STUB in Wave 0, REAL from WP-2
 
@@ -204,7 +222,7 @@ class BenchResult(val checksum: String, val saveMs: Double, val burstMs: Double,
 object PrefsBench {
     /** Runs on the calling thread; blocks. Writes only PrefKeys.benchInt and PrefKeys.benchText. */
     fun measure(repo: PrefsRepository): BenchResult
-    fun datastoreLine(loadMs: Double, r: BenchResult): String
+    fun datastoreLine(loadMs: Double, keysMs: Double, r: BenchResult): String
     fun baselineLine(loadMs: Double, saveMs: Double): String
 }
 ```
@@ -220,7 +238,7 @@ Time with `kotlin.time.TimeSource.Monotonic`. Format each millisecond value with
 **Exact lines:**
 
 ```
-UNIFIEDPREFS_BENCH mode=datastore load_ms=<d> checksum=<hex16> save_ms=<d> burst_ms=<d> burst_saves=<n>
+UNIFIEDPREFS_BENCH mode=datastore load_ms=<d> keys_ms=<d> checksum=<hex16> save_ms=<d> burst_ms=<d> burst_saves=<n>
 UNIFIEDPREFS_BENCH mode=baseline load_ms=<d> save_ms=<d>
 ```
 
@@ -229,18 +247,20 @@ UNIFIEDPREFS_BENCH mode=baseline load_ms=<d> save_ms=<d>
 | | Android (`PocApp.onCreate`) | iOS (`PocApp.init`) |
 |---|---|---|
 | Selector | file `filesDir/bench_mode` containing `datastore` or `baseline`; absent → normal | launch arguments `--bench datastore` / `--bench baseline` |
-| `datastore` | time `prefsRepository(this)` → `loadMs`; `PrefsBench.measure`; log the `datastoreLine` with tag `UnifiedPrefs` | time `IosStorage.shared.repo` → `loadMs`; `PrefsBench.shared.measure`; print the `datastoreLine` |
+| `datastore` | time `PrefKeys.allKeys.size` → `keysMs`; then time `prefsRepository(this)` → `loadMs`; `PrefsBench.measure`; log the `datastoreLine` with tag `UnifiedPrefs` | time `PrefKeys.shared.allKeys.count` → `keysMs`; then time `IosStorage.shared.repo` → `loadMs`; `PrefsBench.shared.measure`; print the `datastoreLine` |
 | `baseline` | time `getSharedPreferences("baseline_prefs", MODE_PRIVATE).all` → `loadMs`; time `edit().putInt("bench_int", n + 1).commit()` → `saveMs`; log the `baselineLine` | time `UserDefaults(suiteName: "baseline")!.dictionaryRepresentation()` → `loadMs`; time `set(_:forKey: "bench_int")` + `synchronize()` → `saveMs`; print the `baselineLine` |
 | After | continue the normal start (`UNIFIEDPREFS_LOAD`, then `UNIFIEDPREFS_STATE`) | same |
 
 The bench step runs **before** any other storage access in the process.
+
+Key setup is timed first and on its own (`keys_ms`). Otherwise it lands inside `load_ms` on iOS, whose migration walks every key, but not on Android, whose migration never touches the registry. That would skew the comparison.
 
 Ruling: the iOS baseline `saveMs` times the call plus `synchronize()`. `UserDefaults` writes to disk in another process, so it is not a time-until-on-disk. FINDINGS must say so.
 
 ### R7. Generator — `tools/genprefs.py` — REAL from WP-1
 
 ```
-python3 -I tools/genprefs.py --kotlin <path to GeneratedKeys.kt>
+python3 -I tools/genprefs.py --kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage
 python3 -I tools/genprefs.py --profile <typical|heavy> --out build/genprefs
 python3 -I tools/genprefs.py --self-check
 ```
@@ -316,12 +336,13 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
 
 ### WP-1: Generator
 
-**Owns:** `tools/genprefs.py`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, `.gitignore` (add `build/genprefs/` only).
+**Owns:** `tools/genprefs.py`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`, `storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/keys/` (new), `.gitignore` (add `build/genprefs/` only).
 
 **Produces:** R7 and the real R2.
 
 - [ ] **Step 1:** Write `--self-check` first. It runs these checks in memory and exits non-zero on any failure, printing which one:
   - `countsMatch`: per-type counts equal Global constraints.
+  - `groupsCoverAllKeysOnce`: the 8 groups together hold all 1000 keys, each exactly once, and each group holds at least 5 of the 9 type kinds.
   - `namesUniqueAndAscii`.
   - `deterministic`: two generations give identical bytes for the XML, the plist and the Kotlin file.
   - `xmlRoundTrip`: parse `app_prefs.xml` with `xml.etree` and get back every value, including `<`, `&`, quotes, newlines, emoji and Tamil.
@@ -334,9 +355,9 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
   - `setsAscii`: every set element is ASCII.
 - [ ] **Step 2:** Run `python3 -I tools/genprefs.py --self-check`. Expected: FAIL (nothing implemented).
 - [ ] **Step 3:** Implement R7. Medium strings mix token-like base64 text and small JSON objects. Large strings are JSON arrays of objects (`{"id":…,"title":…,"tags":[…]}`) grown to the target size.
-- [ ] **Step 4:** Run `--self-check`. Expected: `self-check: 11/11 ok`.
+- [ ] **Step 4:** Run `--self-check`. Expected: `self-check: 12/12 ok`.
 - [ ] **Step 5:**
-  1. Run `--kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage/GeneratedKeys.kt`.
+  1. Run `--kotlin storage/src/commonMain/kotlin/com/example/unifiedprefs/storage`. It writes `GeneratedKeys.kt` and `keys/<Group>.kt`.
   2. Run `--profile typical --out build/genprefs` and `--profile heavy --out build/genprefs`.
   3. Run R9's storage check. Expected: it passes, and `PrefKeysTest` reports 1005 names.
 - [ ] **Step 6:** Commit `feat(tools): generate 1000 preferences and old-store fixtures`.
@@ -435,7 +456,7 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
   - `measureIncrementsBenchInt`: `benchInt` goes from 0 to 1, and `benchText` equals `"bench-99"`.
   - `burstSavesIsAtLeastOne`: `burstSaves >= 1`.
   - `linesHaveExactFormat`:
-    - `datastoreLine(12.34, BenchResult("00000000000000ff", 3.0, 4.56, 2))` equals `"UNIFIEDPREFS_BENCH mode=datastore load_ms=12.3 checksum=00000000000000ff save_ms=3.0 burst_ms=4.6 burst_saves=2"`;
+    - `datastoreLine(12.34, 0.75, BenchResult("00000000000000ff", 3.0, 4.56, 2))` equals `"UNIFIEDPREFS_BENCH mode=datastore load_ms=12.3 keys_ms=0.8 checksum=00000000000000ff save_ms=3.0 burst_ms=4.6 burst_saves=2"`;
     - `baselineLine(1.0, 2.25)` equals `"UNIFIEDPREFS_BENCH mode=baseline load_ms=1.0 save_ms=2.3"`.
 
     Rounding is half up.

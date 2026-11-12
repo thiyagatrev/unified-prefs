@@ -62,7 +62,7 @@ expected checksum is therefore computed per platform.
 
 | Output | Used by |
 |---|---|
-| `storage/src/commonMain/.../GeneratedKeys.kt`: an `object GeneratedKeys` with 1000 typed keys and `val all: List<PrefKey>` | Repository, migration, benchmark |
+| `storage/src/commonMain/.../keys/<Group>.kt`: 8 feature objects with about 125 typed keys each, and `GeneratedKeys.kt` combining them into `val all: List<PrefKey>` | Repository, migration, benchmark |
 | `build/genprefs/<profile>/app_prefs.xml` | Seeding the Android old store |
 | `build/genprefs/<profile>/legacy.plist` | Seeding the iOS old store |
 | `build/genprefs/<profile>/expected-<platform>.txt` | The checksum the app must report |
@@ -78,7 +78,7 @@ it parses the XML and plist it wrote and confirms they decode to the values it g
   keys set it to `isDarkMode`, `launchCount` and `userName`.
 - New key classes `LongKey`, `FloatKey`, `DoubleKey` and `StringSetKey`, with `internal`
   constructors like the existing three.
-- `PrefKeys` keeps its three demo keys. The generated keys live in `GeneratedKeys`, and
+- `PrefKeys` keeps its three demo keys. The generated keys are grouped by feature, one `object` per group (`SettingsKeys`, `PaymentKeys` and so on), all inside `:storage` so their constructors stay `internal`. `GeneratedKeys.all` combines the groups, and
   `allKeys` lists both.
 
 ### Repository (`PrefsRepository.kt`)
