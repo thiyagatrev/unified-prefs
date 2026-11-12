@@ -24,11 +24,22 @@ fun PrefsRepository.watchString(key: StringKey, onChange: (String) -> Unit): Can
     return Cancellable { job.cancel() }
 }
 
-// Contract R3 watchers (stubs until WP-4).
-fun PrefsRepository.watchLong(key: LongKey, onChange: (Long) -> Unit): Cancellable = TODO("WP-4")
+fun PrefsRepository.watchLong(key: LongKey, onChange: (Long) -> Unit): Cancellable {
+    val job = MainScope().launch { observeLong(key).collect { onChange(it) } }
+    return Cancellable { job.cancel() }
+}
 
-fun PrefsRepository.watchFloat(key: FloatKey, onChange: (Float) -> Unit): Cancellable = TODO("WP-4")
+fun PrefsRepository.watchFloat(key: FloatKey, onChange: (Float) -> Unit): Cancellable {
+    val job = MainScope().launch { observeFloat(key).collect { onChange(it) } }
+    return Cancellable { job.cancel() }
+}
 
-fun PrefsRepository.watchDouble(key: DoubleKey, onChange: (Double) -> Unit): Cancellable = TODO("WP-4")
+fun PrefsRepository.watchDouble(key: DoubleKey, onChange: (Double) -> Unit): Cancellable {
+    val job = MainScope().launch { observeDouble(key).collect { onChange(it) } }
+    return Cancellable { job.cancel() }
+}
 
-fun PrefsRepository.watchStringSet(key: StringSetKey, onChange: (Set<String>) -> Unit): Cancellable = TODO("WP-4")
+fun PrefsRepository.watchStringSet(key: StringSetKey, onChange: (Set<String>) -> Unit): Cancellable {
+    val job = MainScope().launch { observeStringSet(key).collect { onChange(it) } }
+    return Cancellable { job.cancel() }
+}
