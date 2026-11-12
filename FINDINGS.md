@@ -17,8 +17,8 @@ sites or losing existing users' data?
 3. The old values must be on disk when the new build first runs. On the iOS simulator they
    sometimes were not (see "Problems found").
 
-One check is still open: on iOS, nobody has yet tapped a control in one section and watched the
-other section follow. The code path is exercised on Android and compiles and renders on iOS.
+A fresh reviewer read the whole branch afterwards and found no critical defects and five important
+ones. Four are fixed and one is a correction to this report; see "Found by the final review".
 
 ## What was built
 
@@ -55,10 +55,11 @@ Both platforms reported dark off, empty name, count 1 on first launch.
 | | Native change shows in shared section | Shared change shows in native section | Survives relaunch |
 |---|---|---|---|
 | Android | yes (switch and text) | yes (switch and text) | yes |
-| iOS | **not tested** | **not tested** | values match after relaunch |
+| iOS | yes (switch and text) | yes (switch and text) | yes |
 
-iOS was not tested because the tool that taps the simulator was not granted access during the run.
-A screenshot confirms both sections render with the same values.
+Checked by hand on the emulator and simulator: toggling the switch and typing in one section, then
+reading the other. On iOS this path is separate code from Android (callback watchers into SwiftUI
+state), and it has no automated test.
 
 ### Time blocked on first access
 
@@ -76,12 +77,13 @@ No baseline was measured for `SharedPreferences` or `NSUserDefaults`, so these a
 
 | Host | Tests | Result |
 |---|---|---|
-| JVM | 9 | pass |
-| Android host (Robolectric) | 15 | pass |
-| iOS simulator | 15 | pass |
+| JVM | 13 | pass |
+| Android host (Robolectric) | 18 | pass |
+| iOS simulator | 18 | pass |
 
 They cover defaults, immediate read-after-write, ordered saves, the Android singleton, both
-migrations, clamping of an out-of-range iOS integer, and that each migration runs once.
+migrations, clamping of an out-of-range iOS integer, that each migration runs once, a failed save,
+and (JVM only) an unreadable store file.
 
 ## Problems found
 
@@ -93,7 +95,9 @@ migrations, clamping of an out-of-range iOS integer, and that each migration run
    first key written was on disk when the new build was installed, and the install moved the app's
    data container. The migration then found one key instead of three. `scripts/ios-install.sh` now
    restarts the simulator before installing, which forces the write. Whether a real device can lose
-   values the same way across an App Store update was not tested.
+   values the same way across an App Store update was not tested. If it can, the loss is permanent:
+   the migration sets its marker on the first run, so keys that were missing at that moment are
+   never copied later, even though they remain in `NSUserDefaults`.
 3. **Android keeps no rollback copy.** `SharedPreferencesMigration` deletes the keys it migrates, and
    that deletion is what stops it running twice. A build rolled back to `SharedPreferences` would
    start from empty. The iOS migration leaves the old values and uses a marker key instead.
@@ -103,13 +107,31 @@ migrations, clamping of an out-of-range iOS integer, and that each migration run
    `com.android.kotlin.multiplatform.library` plugin, the `androidLibrary { }` block, and
    `withHostTest { }` for Robolectric tests in a source set named `androidHostTest`.
 
+## Found by the final review
+
+| Finding | What a user would see | Status |
+|---|---|---|
+| Two threads writing the same key could save in a different order than they updated memory | A setting that reverts after relaunch | Fixed by design: the saver now writes the latest whole snapshot. A concurrency test was added, but it also passed on the old code, so the race was never reproduced |
+| A failed background save threw inside a coroutine with no handler | A crash some time after changing a setting | Fixed: failures are counted in `saveFailures`, memory keeps the value, and the next save retries it |
+| An unreadable store file threw on first read | A crash on every launch | Fixed: the file is replaced with empty preferences, which loses the stored values |
+| The iOS native section wrote back every value its watcher delivered | A just-made edit in the shared section could be overwritten | Fixed: only user input writes. The race itself was never observed |
+| This report overstated the iOS sync evidence | — | Corrected above |
+
+The rewritten save path was re-run through the upgrade, fresh-install and sync checks on both
+platforms after the fix.
+
+Smaller points the review raised and that are **not** fixed: the Swift `LegacyPrefs` traps on a
+launch count above the 32-bit range; the Compose screens create a new Flow on each recomposition;
+iOS watchers are not cancelled if `onAppear` runs twice; `resetStorageForTest()` leaves the old
+DataStore open; and a text field can briefly show an older value before correcting itself.
+
 ## Design points that held up
 
 - **Key constructors are `internal`.** Native code cannot declare a key or pass a string; it can only
   use entries of `PrefKeys`. Defaults live on the key, so platforms cannot disagree.
 - **Swift sees a usable API.** `IosStorage.shared.repo.getBoolean(key: PrefKeys.shared.darkMode)` works
   directly. Flows are bridged with small callback functions (`watchBoolean` and so on) that return a
-  cancel handle; no extra library was needed.
+  cancel handle; no extra library was needed. This bridge is verified by hand only.
 - **One iOS framework.** `:shared-ui` exports `:storage`, so Swift imports a single `Shared` module.
 
 ## Not covered
@@ -121,12 +143,16 @@ migrations, clamping of an out-of-range iOS integer, and that each migration run
 - Values other than Boolean, Int and String, such as Android string sets or archived iOS objects.
 - A process killed between a write and its background save. The design accepts this, as
   `SharedPreferences.apply()` does, but no test measures it.
-- A corrupted DataStore file.
+- A save that keeps failing. Memory and disk then stay apart until a save succeeds, and the app
+  is told only through a counter.
+- Writes from several threads under real load. The design no longer depends on queue order, but
+  no test has shown the old failure.
 
 ## How the work was run
 
 Wave 0 (build setup, contracts as compiling stubs, test harnesses, scripts) was done in one session.
 Seven work packages then ran as lightweight agents in separate git worktrees, five in parallel and
 then two, each owning its own files. All seven reported done on the first attempt and merged without
-conflicts. Both real defects (items 1 and 2 above) were found afterwards by the coordinating session
-on the merged code, not by the packages' own checks.
+conflicts. Both defects under "Problems found" items 1 and 2 were found afterwards by the
+coordinating session on the merged code, and the design-level ones by a separate reviewer; none
+were caught by the packages' own checks.

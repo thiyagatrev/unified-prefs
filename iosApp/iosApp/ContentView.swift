@@ -10,18 +10,25 @@ struct ContentView: View {
     @State private var nameWatch: Shared.Cancellable?
     @State private var countWatch: Shared.Cancellable?
 
+    // Only user input writes to storage. Values arriving from the watchers update the view state
+    // directly, so they are never written back and cannot overwrite a newer edit made elsewhere.
+    private var darkBinding: Binding<Bool> {
+        Binding(get: { isDark }, set: { isDark = $0; LegacyPrefs.shared.isDarkMode = $0 })
+    }
+
+    private var nameBinding: Binding<String> {
+        Binding(get: { userName }, set: { userName = $0; LegacyPrefs.shared.userName = $0 })
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Text("Native (LegacyPrefs)")
                 .font(.headline)
-            Toggle("Dark mode", isOn: $isDark)
+            Toggle("Dark mode", isOn: darkBinding)
                 .accessibilityIdentifier("nativeDarkMode")
-                .onChange(of: isDark) { LegacyPrefs.shared.isDarkMode = $0 }
-            TextField("Native user name", text: $userName)
+            TextField("Native user name", text: nameBinding)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: userName) { LegacyPrefs.shared.userName = $0 }
             Text("Native launch count: \(count)")
-
             ComposeView()
                 .frame(height: 300)
         }
