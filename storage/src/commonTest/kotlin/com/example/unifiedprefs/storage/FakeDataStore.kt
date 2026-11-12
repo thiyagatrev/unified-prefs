@@ -18,12 +18,17 @@ class FakeDataStore(initial: Preferences = emptyPreferences()) : DataStore<Prefe
     /** Number of upcoming writes that should fail, to simulate a full disk. */
     var failNextWrites: Int = 0
 
+    /** Held by a test to stall writes, so several puts can queue behind one save. */
+    val gate = Mutex()
+
     override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
         mutex.withLock {
-            if (failNextWrites > 0) {
-                failNextWrites--
-                throw IllegalStateException("simulated write failure")
+            gate.withLock {
+                if (failNextWrites > 0) {
+                    failNextWrites--
+                    throw IllegalStateException("simulated write failure")
+                }
+                transform(state.value).also { state.value = it }
             }
-            transform(state.value).also { state.value = it }
         }
 }
