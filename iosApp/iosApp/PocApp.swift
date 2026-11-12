@@ -1,15 +1,19 @@
 import SwiftUI
-import Shared
 
-// Wave 0 placeholder: proves the Kotlin framework links and the launch script can read stdout.
 @main
 struct PocApp: App {
     init() {
+        // Without this the state line stays in the stdout buffer and scripts/ios-launch.sh never sees it.
         setvbuf(stdout, nil, _IOLBF, 0)
-        print("UNIFIEDPREFS_STATE dark=false name= count=0 keys=\(PrefKeys.shared.allNames.count)")
+        if ProcessInfo.processInfo.arguments.contains("--seed") {
+            LegacyPrefs.shared.isDarkMode = true
+            LegacyPrefs.shared.userName = "Asha"
+        }
+        LegacyPrefs.shared.launchCount += 1
+        print("UNIFIEDPREFS_STATE dark=\(LegacyPrefs.shared.isDarkMode) name=\(LegacyPrefs.shared.userName) count=\(LegacyPrefs.shared.launchCount)")
     }
 
     var body: some Scene {
-        WindowGroup { Text("placeholder") }
+        WindowGroup { ContentView() }
     }
 }
