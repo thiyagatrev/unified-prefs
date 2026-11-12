@@ -5,9 +5,14 @@ import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 
-/** Contract C5. Stub: implemented by WP-C. */
+/** Contract C5. One repository per process, backed by one DataStore. Swift: IosStorage.shared.repo */
 object IosStorage {
-    val repo: PrefsRepository get() = TODO("WP-C")
+    val repo: PrefsRepository by lazy {
+        PrefsRepository(
+            createDataStore(listOf(UserDefaultsMigration()), ::iosStorePath),
+            defaultStorageScope(),
+        )
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)
