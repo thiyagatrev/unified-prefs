@@ -3,7 +3,10 @@ package com.example.unifiedprefs.storage
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.preferencesOf
 import app.cash.turbine.test
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -65,6 +68,47 @@ class PrefsRepositoryTest {
             repo.putBoolean(PrefKeys.darkMode, true)
             assertEquals(true, awaitItem())
             repo.putBoolean(PrefKeys.darkMode, true)
+            expectNoEvents()
+            cancel()
+        }
+    }
+
+    @Test
+    fun concurrentWritersLeaveDiskEqualToMemory() = runTest {
+        val (fake, repo) = repo()
+        repeat(20) { round ->
+            (1..8).map { writer ->
+                launch(Dispatchers.Default) {
+                    repeat(200) { repo.putInt(PrefKeys.launchCount, round * 10_000 + writer * 1_000 + it) }
+                }
+            }.joinAll()
+            repo.flush()
+            assertEquals(repo.getInt(PrefKeys.launchCount), fake.data.first()[PrefKeys.launchCount.key], "round $round")
+        }
+    }
+
+    @Test
+    fun failedSaveIsReportedAndLaterSavesStillWork() = runTest {
+        val (fake, repo) = repo()
+        fake.failNextWrites = 1
+        repo.putInt(PrefKeys.launchCount, 5)
+        repo.flush()
+        assertEquals(1, repo.saveFailures.value)
+        assertEquals(5, repo.getInt(PrefKeys.launchCount))
+
+        repo.putString(PrefKeys.userName, "Asha")
+        repo.flush()
+        val saved = fake.data.first()
+        assertEquals("Asha", saved[PrefKeys.userName.key])
+        assertEquals(5, saved[PrefKeys.launchCount.key]) // the earlier value reaches disk with the next save
+    }
+
+    @Test
+    fun changeToAnotherKeyDoesNotReEmit() = runTest {
+        val (_, repo) = repo()
+        repo.observeBoolean(PrefKeys.darkMode).test {
+            assertEquals(false, awaitItem())
+            repo.putString(PrefKeys.userName, "Asha")
             expectNoEvents()
             cancel()
         }
