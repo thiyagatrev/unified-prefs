@@ -56,7 +56,7 @@ Intended model: Haiku-class. If a package reports `BLOCKED` twice, re-dispatch i
 - Versions are pinned in `gradle/libs.versions.toml` (AGP 9.1.1, Kotlin 2.4.10, Compose Multiplatform 1.11.1, DataStore 1.3.0, coroutines 1.11.0, Gradle 9.6.1). `minSdk` 24, `compileSdk` 36, iOS 15.0, JDK 17.
 - Exactly one DataStore instance per process. Nothing outside `:storage` constructs a DataStore or a key.
 - Legacy Android prefs file: `app_prefs`. DataStore file: `app.preferences_pb`.
-- Android device: emulator `Pixel_5_API_35`. iOS device: simulator `iPhone 16`.
+- Android device: emulator `Pixel_5_API_35`. iOS device: simulator `iPhone 17` (iOS 26.5).
 - Out of scope: encryption, widgets, lint rules, SKIE.
 
 ## Keys
@@ -210,12 +210,13 @@ repo.putBoolean(key: PrefKeys.shared.darkMode, value: true)
 repo.getInt(key: PrefKeys.shared.launchCount)                  // Int32
 repo.putInt(key: PrefKeys.shared.launchCount, value: Int32(4))
 repo.getString(key: PrefKeys.shared.userName)                  // String
-let handle = repo.watchBoolean(key: PrefKeys.shared.darkMode) { value in /* value.boolValue */ }
+let handle = repo.watchBoolean(key: PrefKeys.shared.darkMode) { value in /* value is KotlinBoolean: value.boolValue */ }
+// watchInt delivers KotlinInt (value.intValue, an Int32); watchString delivers a plain String
 handle.cancel()
 MainViewControllerKt.MainViewController()                      // UIViewController
 ```
 
-Wave 0 confirms these spellings against the generated framework header and corrects them in `docs/CONTRACTS.md`.
+These spellings were checked against the generated `Shared.h` in Wave 0.
 
 ### C9. State line and seed hook (how scripts verify the apps)
 
@@ -226,7 +227,7 @@ UNIFIEDPREFS_STATE dark=<true|false> name=<userName> count=<launchCount>
 ```
 
 - Android: `Log.i("UnifiedPrefs", line)` in `PocApp.onCreate`.
-- iOS: `print(line)` in `PocApp.init`.
+- iOS: `setvbuf(stdout, nil, _IOLBF, 0)` then `print(line)` in `PocApp.init`. Without the `setvbuf` call the line is buffered and the launch script sees nothing.
 - iOS seed hook: when the process arguments contain `--seed`, `PocApp.init` sets `LegacyPrefs.shared.isDarkMode = true` and `LegacyPrefs.shared.userName = "Asha"` before the increment. The hook goes through `LegacyPrefs` only.
 
 ### C10. Scripts — `scripts/` — REAL, written and proven by Wave 0
@@ -236,7 +237,7 @@ UNIFIEDPREFS_STATE dark=<true|false> name=<userName> count=<launchCount>
 | `scripts/android-install.sh` | builds and installs `androidApp` debug over any existing install | Gradle result |
 | `scripts/android-launch.sh` | force-stops, clears logcat, launches, waits | the `UNIFIEDPREFS_STATE` line |
 | `scripts/android-seed.sh` | taps the native switch on and types `Asha` in the native field | nothing |
-| `scripts/ios-install.sh` | `xcodegen generate`, builds for simulator `iPhone 16`, boots it, installs over any existing install | `BUILD SUCCEEDED` or the error |
+| `scripts/ios-install.sh` | `xcodegen generate`, builds for simulator `iPhone 17`, boots it, installs over any existing install | `BUILD SUCCEEDED` or the error |
 | `scripts/ios-launch.sh [args...]` | terminates, launches with the given args, waits | the `UNIFIEDPREFS_STATE` line |
 | `scripts/ios-uninstall.sh`, `scripts/android-uninstall.sh` | remove the app and its data | nothing |
 | `scripts/android-install-before.sh` | installs `artifacts/before-android.apk`, the build of tag `before-android` | `Success` |
@@ -331,7 +332,7 @@ Getters read `cache.value[key.key] ?: key.default`. Puts call `write { it[key.ke
 
 Tests exercise the DataStore directly, so they pass without WP-A. Each test uses its own `fileName` so no two DataStores share a file.
 
-- [ ] **Step 1: Write the tests** (Robolectric runner, `ApplicationProvider.getApplicationContext()`; `seed(...)` writes to `getSharedPreferences("app_prefs", MODE_PRIVATE)` with `commit()`):
+- [ ] **Step 1: Write the tests.** Copy the class annotations and imports from `AndroidSmokeTest.kt` in the same folder (`@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [35])`, `org.junit.Test`), and wrap suspending calls in `runBlocking`. (`ApplicationProvider.getApplicationContext()`; `seed(...)` writes to `getSharedPreferences("app_prefs", MODE_PRIVATE)` with `commit()`):
 
 ```kotlin
 @Test fun migratesExistingSharedPreferences()
@@ -352,7 +353,7 @@ Tests exercise the DataStore directly, so they pass without WP-A. Each test uses
 
 - [ ] **Step 2:** Run `./gradlew :storage:testAndroidHostTest`. Expected: the five tests fail with `NotImplementedError`.
 - [ ] **Step 3: Implement.** `prefsRepository` uses a `@Volatile` field with double-checked locking on `context.applicationContext` and builds `PrefsRepository(androidDataStore(appContext), defaultStorageScope())`.
-- [ ] **Step 4:** Run `./gradlew :storage:testAndroidHostTest`. Expected: 6 pass, 0 fail. If `accessorReturnsSameInstanceOnEveryCall` fails only because the WP-A stub constructor throws, report that in DEVIATIONS; it is expected to pass after merge.
+- [ ] **Step 4:** Run `./gradlew :storage:testAndroidHostTest`. Expected: 7 pass, 0 fail (your five, `AndroidSmokeTest`, and the common `SmokeTest`, which also runs on this host). If `accessorReturnsSameInstanceOnEveryCall` fails only because the WP-A stub constructor throws, report that in DEVIATIONS; it is expected to pass after merge.
 - [ ] **Step 5:** Commit: `feat(storage): Android singleton and SharedPreferences migration`.
 
 ### WP-C: iOS storage, migration and Swift bridge
@@ -395,7 +396,7 @@ override suspend fun cleanUp() {}
 ```
 
 - [ ] **Step 4: Implement `IosStorage` and the bridge.** `repo` is `by lazy { PrefsRepository(createDataStore(listOf(UserDefaultsMigration()), ::iosStorePath), defaultStorageScope()) }`. Each `watchX` launches on `MainScope()` collecting the matching `observeX(key)` into `onChange`, and returns a `Cancellable` that cancels that job.
-- [ ] **Step 5:** Run `./gradlew :storage:iosSimulatorArm64Test`. Expected: all tests in `UserDefaultsMigrationTest` and the smoke test pass. Repository tests from WP-A are not in this branch and are not expected.
+- [ ] **Step 5:** Run `./gradlew :storage:iosSimulatorArm64Test`. Expected: 7 pass, 0 fail (your five, `IosSmokeTest`, and the common `SmokeTest`). Repository tests from WP-A are not in this branch and are not expected.
 - [ ] **Step 6:** Commit: `feat(storage): iOS singleton, NSUserDefaults migration, Swift bridge`.
 
 ### WP-D: Shared Compose screen

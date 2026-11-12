@@ -10,3 +10,4 @@ DerivedData/
 *.xcodeproj/
 .DS_Store
 captures/
+*.log
