@@ -62,6 +62,20 @@ class AndroidStorageTest {
     }
 
     @Test
+    fun sharedPreferencesMigrationKeepsLongFloatAndSet() = runBlocking {
+        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("big_long", Long.MAX_VALUE)
+            .putFloat("some_float", 0.1f)
+            .putStringSet("some_set", setOf("x", "y"))
+            .commit()
+        val p = androidDataStore(context, "t5.preferences_pb").data.first()
+        assertEquals(Long.MAX_VALUE, p[androidx.datastore.preferences.core.longPreferencesKey("big_long")])
+        assertEquals(0.1f, p[androidx.datastore.preferences.core.floatPreferencesKey("some_float")])
+        assertEquals(setOf("x", "y"), p[androidx.datastore.preferences.core.stringSetPreferencesKey("some_set")])
+    }
+
+    @Test
     fun accessorReturnsSameInstanceOnEveryCall() {
         resetStorageForTest()
         assertSame(prefsRepository(context), prefsRepository(context))
