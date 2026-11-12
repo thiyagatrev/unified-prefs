@@ -239,6 +239,10 @@ UNIFIEDPREFS_STATE dark=<true|false> name=<userName> count=<launchCount>
 | `scripts/ios-install.sh` | `xcodegen generate`, builds for simulator `iPhone 16`, boots it, installs over any existing install | `BUILD SUCCEEDED` or the error |
 | `scripts/ios-launch.sh [args...]` | terminates, launches with the given args, waits | the `UNIFIEDPREFS_STATE` line |
 | `scripts/ios-uninstall.sh`, `scripts/android-uninstall.sh` | remove the app and its data | nothing |
+| `scripts/android-install-before.sh` | installs `artifacts/before-android.apk`, the build of tag `before-android` | `Success` |
+| `scripts/ios-install-before.sh` | boots the simulator and installs `artifacts/before-ios.app.zip`, the build of tag `before-ios` | nothing |
+
+The two before-state builds are committed under `artifacts/` so the upgrade tests need no git checkouts. Wave 0 produces the Android one; the Wave 1 merge produces the iOS one.
 
 ### C11. Test commands — proven by Wave 0
 
@@ -262,7 +266,7 @@ UNIFIEDPREFS_STATE dark=<true|false> name=<userName> count=<launchCount>
 - [ ] **Step 4:** `FakeDataStore(initial: Preferences = emptyPreferences()) : DataStore<Preferences>`, an in-memory implementation over a `MutableStateFlow` guarded by a `Mutex`.
 - [ ] **Step 5:** Smoke tests: `commonTest` asserts `PrefKeys.allNames.size == 3`; `androidHostTest` obtains the Robolectric application context and asserts its package name; `iosTest` asserts `iosStorePath().endsWith("/app.preferences_pb")` (so `iosStorePath` is REAL, not a stub).
 - [ ] **Step 6:** `brew install xcodegen`. Write `iosApp/project.yml` in its final form: iOS 15 app target `iosApp`, bundle id `com.example.unifiedprefs`, sources `iosApp/`, generated Info.plist, a pre-build script running `./gradlew :shared-ui:embedAndSignAppleFrameworkForXcode` from the repo root, framework search path and `-framework Shared` linker flag, user script sandboxing off. Add a placeholder `iosApp/iosApp/PocApp.swift` that shows the text `placeholder`.
-- [ ] **Step 7:** Write the C10 scripts.
+- [ ] **Step 7:** Write the C10 scripts. Build the APK of tag `before-android` in a temporary worktree and commit it as `artifacts/before-android.apk`.
 - [ ] **Step 8: Gate.** All C11 commands pass, `scripts/ios-install.sh` prints `BUILD SUCCEEDED`, and the generated `Shared.framework` header is checked against C8.
 - [ ] **Step 9:** Write `docs/CONTRACTS.md` with any corrections. Commit: `chore: contracts, build config, stubs and test harnesses`. Tag `wave0`.
 
@@ -427,7 +431,7 @@ Do not `import Shared` in this package. The framework is linked but unused in th
 
 ### Wave 1 merge (main session)
 
-Merge into `poc` in this order: A, B, C, D, E. Ownership is disjoint, so conflicts mean a package broke rule 2. Then run every C11 command and `scripts/ios-install.sh`; all must pass, including `accessorReturnsSameInstanceOnEveryCall`. Tag `wave1`.
+Merge into `poc` in this order: A, B, C, D, E. Ownership is disjoint, so conflicts mean a package broke rule 2. Then run every C11 command and `scripts/ios-install.sh`; all must pass, including `accessorReturnsSameInstanceOnEveryCall`. Zip the simulator `.app` built from tag `before-ios` and commit it as `artifacts/before-ios.app.zip`. Tag `wave1`.
 
 ---
 
@@ -445,17 +449,15 @@ Merge into `poc` in this order: A, B, C, D, E. Ownership is disjoint, so conflic
 
 | Command | Expected output |
 |---|---|
-| `scripts/android-uninstall.sh; git stash -u; git checkout -q before-android; scripts/android-install.sh` | `BUILD SUCCESSFUL` |
+| `scripts/android-uninstall.sh; scripts/android-install-before.sh` | `Success` |
 | `scripts/android-launch.sh` (the before app prints no state line) then `scripts/android-seed.sh` | no output |
 | `scripts/android-launch.sh; scripts/android-launch.sh` | no output; the app has now started 3 times |
 | `adb shell run-as com.example.unifiedprefs cat shared_prefs/app_prefs.xml` | `launch_count` 3, `dark_mode` true, `user_name` Asha |
-| `git checkout -q wp/F; git stash pop; scripts/android-install.sh` | `BUILD SUCCESSFUL` |
+| `scripts/android-install.sh` | `BUILD SUCCESSFUL` |
 | `scripts/android-launch.sh` | `UNIFIEDPREFS_STATE dark=true name=Asha count=4` |
 | `scripts/android-launch.sh` | `UNIFIEDPREFS_STATE dark=true name=Asha count=5` |
 | `adb shell run-as com.example.unifiedprefs ls files/datastore` | `app.preferences_pb` |
 | `adb shell run-as com.example.unifiedprefs cat shared_prefs/app_prefs.xml` | file missing, or none of the three keys present |
-
-Commit Steps 1–3 before running this table, so the checkout of `before-android` and back loses nothing.
 
 - [ ] **Step 5:** Commit: `feat(android): LegacyPrefs on unified storage; shared screen embedded`.
 
@@ -471,14 +473,14 @@ Commit Steps 1–3 before running this table, so the checkout of `before-android
 
 | Command | Expected output |
 |---|---|
-| `scripts/ios-uninstall.sh; git stash -u; git checkout -q before-ios; scripts/ios-install.sh` | `BUILD SUCCEEDED` |
+| `scripts/ios-uninstall.sh; scripts/ios-install-before.sh` | no output |
 | `scripts/ios-launch.sh --seed` | `UNIFIEDPREFS_STATE dark=true name=Asha count=1` |
 | `scripts/ios-launch.sh; scripts/ios-launch.sh` | ends with `... count=3` |
-| `git checkout -q wp/G; git stash pop; scripts/ios-install.sh` | `BUILD SUCCEEDED` |
+| `scripts/ios-install.sh` | `BUILD SUCCEEDED` |
 | `scripts/ios-launch.sh` | `UNIFIEDPREFS_STATE dark=true name=Asha count=4` |
 | `scripts/ios-launch.sh` | `UNIFIEDPREFS_STATE dark=true name=Asha count=5` |
 
-The fourth row is the central check of the POC: synchronous reads in `PocApp.init`, before any UI, see migrated data. Commit Steps 1–3 before running this table.
+The fifth row is the central check of the POC: synchronous reads in `PocApp.init`, before any UI, see migrated data.
 
 - [ ] **Step 5:** Commit: `feat(ios): LegacyPrefs on unified storage; shared screen embedded`.
 
