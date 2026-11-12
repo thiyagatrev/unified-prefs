@@ -56,3 +56,31 @@ by one package therefore also runs in the other two commands after merge.
   trials only the first key written was on disk before the install. `scripts/ios-install.sh`
   now restarts the simulator before installing, which forces the write. Without this the
   upgrade test fails intermittently for a reason unrelated to the migration code.
+
+## Real-app scale: proven at tag `scale-wave0`
+
+Plan: `docs/superpowers/plans/2026-11-12-real-app-scale-parallel.md`.
+
+| Contract | File | State |
+|---|---|---|
+| R1 keys | `PrefKeys.kt` | real: sealed `PrefKey`, seven key classes, `legacyIosName`, bench keys, `allKeys` |
+| R2 generated keys | `GeneratedKeys.kt` | placeholder (`all = emptyList()`), WP-1 |
+| R3 repository additions | `PrefsRepository.kt` | stub, WP-2 |
+| R4 checksum | `PrefsChecksum.kt` | stub, WP-3 |
+| R5 bench | `PrefsBench.kt` | stub, WP-5 |
+| new Swift watchers | `SwiftBridge.kt` | stub, WP-4 |
+| R8 seeding | `scripts/seed-legacy.sh` | real |
+
+Facts a package needs:
+
+- **1000 keys in one object compile and initialise** on JVM, Android host and iOS simulator, and the
+  iOS app links with them. No split into parts is needed.
+- **Swift sees** `PrefsBench.shared`, `repo.valueOf(key:)`, `repo.saveCount`, `key.legacyIosName`.
+- **iOS seeding writes into the app's own data container** with the simulator shut down, then
+  boots it. `xcrun simctl spawn … defaults import` also reaches the app, but it writes the
+  simulator's home domain (`<device>/data/Library/Preferences`), which survives an uninstall
+  and would leak into later fresh-install checks. A real device keeps preferences in the
+  container, so the container method is used.
+- **Android seeding** uses `adb exec-in run-as … sh -c 'cat > shared_prefs/<name>.xml'`.
+  After the upgrade launch, `app_prefs.xml` is gone (migrated) and `baseline_prefs.xml` remains.
+- `seed-legacy.sh` takes a profile name or a directory, so a small fixture can be seeded in a test.

@@ -269,7 +269,12 @@ Sizes must fall within typical 250–450 KB and heavy 2.8–3.6 MB.
 - **Android:**
   - `run-as com.example.unifiedprefs` creates `shared_prefs/`;
   - it copies `app_prefs.xml` to `shared_prefs/app_prefs.xml` and to `shared_prefs/baseline_prefs.xml`.
-- **iOS:** the method proven in WP-0 step 4 places `legacy.plist` as the app's standard defaults and again as suite `baseline`.
+- **iOS (proven in Wave 0):**
+  - shut the simulator down;
+  - copy `legacy.plist` into the app's data container as `Library/Preferences/com.example.unifiedprefs.plist` and as `Library/Preferences/baseline.plist`;
+  - boot.
+
+  `defaults import` was rejected: it writes the simulator's home domain, which survives an uninstall.
 
 ### R9. Commands
 

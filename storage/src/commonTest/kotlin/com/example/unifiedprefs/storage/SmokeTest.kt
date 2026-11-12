@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 
 class SmokeTest {
     @Test
-    fun registryHasThreeKeys() {
-        assertEquals(3, PrefKeys.allNames.size)
+    fun registryHasHandWrittenAndGeneratedKeys() {
+        assertEquals(5 + GeneratedKeys.all.size, PrefKeys.allNames.size)
     }
 }

@@ -64,6 +64,29 @@ class PrefsRepository internal constructor(
     fun getString(key: StringKey): String = state.value.prefs[key.key] ?: key.default
     fun putString(key: StringKey, value: String) = write { it[key.key] = value }
 
+    // Contract R3 (stubs until WP-2).
+    fun getLong(key: LongKey): Long = TODO("WP-2")
+    fun putLong(key: LongKey, value: Long): Unit = TODO("WP-2")
+    fun observeLong(key: LongKey): Flow<Long> = TODO("WP-2")
+
+    fun getFloat(key: FloatKey): Float = TODO("WP-2")
+    fun putFloat(key: FloatKey, value: Float): Unit = TODO("WP-2")
+    fun observeFloat(key: FloatKey): Flow<Float> = TODO("WP-2")
+
+    fun getDouble(key: DoubleKey): Double = TODO("WP-2")
+    fun putDouble(key: DoubleKey, value: Double): Unit = TODO("WP-2")
+    fun observeDouble(key: DoubleKey): Flow<Double> = TODO("WP-2")
+
+    fun getStringSet(key: StringSetKey): Set<String> = TODO("WP-2")
+    fun putStringSet(key: StringSetKey, value: Set<String>): Unit = TODO("WP-2")
+    fun observeStringSet(key: StringSetKey): Flow<Set<String>> = TODO("WP-2")
+
+    /** The current value of any key, boxed; the key's default if unset. */
+    fun valueOf(key: PrefKey): Any = TODO("WP-2")
+
+    /** Saves completed successfully since this repository was created. */
+    val saveCount: StateFlow<Int> get() = TODO("WP-2")
+
     fun observeBoolean(key: BoolKey): Flow<Boolean> =
         state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
 

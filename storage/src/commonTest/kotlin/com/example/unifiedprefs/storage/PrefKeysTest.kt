@@ -14,8 +14,9 @@ class PrefKeysTest {
     @Test
     fun storedNamesMatchTheKeysTable() {
         assertEquals(
-            listOf("dark_mode", "launch_count", "user_name"),
-            PrefKeys.allNames,
+            listOf("dark_mode", "launch_count", "user_name", "bench_int", "bench_text"),
+            PrefKeys.allNames.take(5),
         )
+        assertEquals(5 + GeneratedKeys.all.size, PrefKeys.allNames.size)
     }
 }
