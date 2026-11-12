@@ -1,0 +1,1 @@
+android,typical,new_store_bytes=70646,old_store_bytes=128071

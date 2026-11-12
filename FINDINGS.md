@@ -77,9 +77,9 @@ No baseline was measured for `SharedPreferences` or `NSUserDefaults`, so these a
 
 | Host | Tests | Result |
 |---|---|---|
-| JVM | 13 | pass |
-| Android host (Robolectric) | 19 | pass |
-| iOS simulator | 18 | pass |
+| JVM | 31 | pass |
+| Android host (Robolectric) | 38 | pass |
+| iOS simulator | 41 | pass |
 
 They cover defaults, immediate read-after-write, ordered saves, the Android singleton, both
 migrations, clamping of an out-of-range iOS integer, that each migration runs once, a failed save,
@@ -147,15 +147,142 @@ were run again on the Android emulator and the iOS simulator, and passed.
 
 - Encryption of stored values.
 - iOS widgets, extensions and app groups.
-- Large or frequently written data (DataStore rewrites the whole file on each save).
 - Physical devices, release builds, and real App Store or Play Store updates.
-- Values other than Boolean, Int and String, such as Android string sets or archived iOS objects.
+- Archived iOS objects (`NSData`, `NSDate`, dictionaries) in `UserDefaults`.
 - A process killed between a write and its background save. The design accepts this, as
   `SharedPreferences.apply()` does, but no test measures it.
 - A save that keeps failing. Memory and disk then stay apart until a save succeeds, and the app
   is told only through a counter.
 - Writes from several threads under real load. The design no longer depends on queue order, but
   no test has shown the old failure.
+
+## Real-app scale: 200 preferences
+
+### What was run
+
+The three demo keys showed the design works; they could not show whether it holds at a real
+app's size. So a generator (`tools/genprefs.py`) wrote **200 preferences** of every type into the
+old stores of the before-state builds, which were then upgraded:
+
+| Type | Count | Values |
+|---|---|---|
+| Boolean | 70 | |
+| Int | 40 | includes `Int.MIN_VALUE`, `Int.MAX_VALUE`, 0 |
+| Long | 24 | timestamps, includes `Long.MIN_VALUE`, `Long.MAX_VALUE` |
+| Float | 16 | 32-bit values |
+| Double | 8 | iOS only; `SharedPreferences` has no Double type |
+| String, short | 30 | includes empty, emoji, Tamil, `<`, `&`, quotes, newline, `]]>` |
+| String, medium | 6 | 1–4 KB tokens and small JSON |
+| String, large | 2 | typical: 10–40 KB JSON; heavy: 1.0–1.45 MB JSON |
+| String set | 4 | 3–50 entries |
+
+There are two profiles over the same 200 keys: **typical**, about 64 KB of values, and **heavy**,
+about 2.4 MB, the case where an app caches API responses in preferences.
+
+Each run (`scripts/bench.sh`) installed the before-state build, seeded the profile, upgraded, and
+launched once to migrate. It then made 10 cold starts measuring DataStore and 10 measuring the
+old store reading the same data, alternating.
+
+### Every value arrived exactly
+
+After migration, a checksum over all 200 values matched the generator's expected value on both
+platforms, in both profiles, on every one of the 44 launches. Nothing was lost, rounded or
+re-encoded: not the extreme integers, the 32-bit floats, the emoji and Tamil text, the XML
+special characters, nor the megabyte-sized strings.
+
+### Numbers
+
+Median and (range) in milliseconds, Debug builds, Android emulator (Pixel 5, API 35) and iOS
+simulator (iPhone 17, iOS 26.5).
+
+| Platform, profile | Runs | First access, DataStore ms | Migration run ms | Key setup ms | First read, old store ms | One write, DataStore ms | One write, old store ms | 100 quick writes ms | Saves for 100 writes | DataStore file | Old store file |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| android, typical | 10 | 114 (89–201) | 163 | 14 (9.3–38) | 119 (100–446) | 55 (50–76) | 17 (14–34) | 68 (59–91) | 3.0 (3.0–3.0) | 69 KB | 125 KB |
+| android, heavy | 10 | 317 (100–776) | 324 | 22 (12–40) | 1794 (147–3531) | 386 (129–822) | 172 (72–367) | 629 (184–1226) | 2.0 (2.0–2.0) | 2.4 MB | 4.3 MB |
+| ios, typical | 10 | 13 (8.9–50) | 123 | 3.0 (2.4–4.6) | 4.1 (3.7–10) | 8.9 (7.4–14) | 0.4 (0.3–1.3) | 81 (64–131) | 6.0 (4.0–10) | 69 KB | 131 KB |
+| ios, heavy | 10 | 51 (45–72) | 171 | 2.7 (2.2–4.1) | 6.5 (4.8–15) | 73 (64–115) | 0.5 (0.3–4.2) | 174 (141–250) | 2.0 (2.0–3.0) | 2.4 MB | 4.7 MB |
+
+How to read the columns:
+
+- **First access.** The time for the first storage call at app start: create the store, read the
+  file, build the in-memory copy. This blocks whatever thread makes the call; the app makes it on
+  the main thread.
+- **Migration run.** The same, on the one launch that also copies the old store.
+- **Key setup.** Creating the 205 key objects, timed separately. iOS's migration walks every key
+  and Android's does not, so leaving it inside first access would skew the comparison.
+- **First read, old store.** Android: `getSharedPreferences(...).getAll()`. iOS:
+  `UserDefaults(suiteName:).dictionaryRepresentation()`.
+- **One write.** DataStore: from `put` until the value is on disk. Android old store:
+  `commit()`, which also waits for the disk. **iOS old store: the `set` call plus
+  `synchronize()` only.** `UserDefaults` hands the write to a separate system process, so this
+  number is not time to disk and cannot be compared with the DataStore column.
+- **100 quick writes.** 100 `put` calls in a row, like typing, until all are saved, and how many
+  saves to disk that took.
+
+### What the numbers say
+
+1. **Typical profile, Android: start-up is the same as today.** DataStore's first access (114 ms)
+   is within noise of `SharedPreferences` (119 ms).
+2. **Heavy profile, Android: DataStore starts much faster.** 317 ms against 1,794 ms. Parsing
+   4.3 MB of XML is slower than reading 2.4 MB of protobuf. The ranges are wide (see "How much to
+   trust this").
+3. **iOS: DataStore starts slower than `UserDefaults`.** 13 ms against 4 ms typical, and 51 ms
+   against 6.5 ms heavy. `UserDefaults` is served by a system process (`cfprefsd`) that keeps
+   preferences in memory between launches. DataStore reads and parses its file in the app every
+   time. On a real device that daemon cache may be evicted more often than on a simulator.
+4. **Every DataStore write rewrites the whole file.** One write costs 55 ms (typical) and 386 ms
+   (heavy) on Android, against 17 ms and 172 ms for `commit()`. With 2.4 MB stored, changing one
+   flag writes 2.4 MB. The value is in memory at once, so the app never waits. But a crash during
+   that window loses the change, as with `SharedPreferences.apply()`.
+5. **Rapid writes are batched.** 100 writes became 2–6 saves on both platforms, and finished in
+   68–629 ms.
+6. **The DataStore file is about half the size of the old store.** The Android XML stores non-ASCII
+   text as escaped character codes. A binary plist stores any string containing non-ASCII text as
+   UTF-16.
+7. **The heavy iOS old store is past a real limit, and iOS says so.** Its plist is 4.7 MB. Every
+   write to it made iOS log, at fault level:
+   *"Attempting to store >= 4194304 bytes of data in CFPreferences/NSUserDefaults on this platform
+   is invalid. This is a bug in iosApp or a library it uses."*
+   On the simulator the writes were still kept: the benchmark counter reached 10 after 10 runs.
+   Apple calls it invalid, so an app at this size depends on behaviour Apple does not promise.
+   DataStore stored the same values in 2.4 MB with no warning; its limits are memory and the time
+   to rewrite the file.
+8. **The migration costs one slower launch.** 163 ms and 324 ms on Android, 123 ms and 171 ms on
+   iOS, for typical and heavy, once, on the first launch after the update.
+
+### What this means for an app
+
+- **With preferences of a normal size, this design costs nothing on Android and about 10 ms at
+  iOS start-up.** In exchange it removes the platform split, gives synchronous typed reads from
+  memory everywhere, and migrates every value exactly.
+- **Do not keep megabytes in preferences, with any store.** At 2.4 MB, every write costs hundreds
+  of milliseconds of background disk work, and the old iOS store is past `UserDefaults`' size
+  warning. Cached responses belong in files or a database, and that is true before and after
+  this migration.
+- **If start-up time matters, touch storage early on a background thread** (for example in
+  `Application.onCreate` or the iOS app delegate). The first access then overlaps with UI setup
+  instead of blocking the main thread.
+- **On the keys:** 200 keys sit in one `object` here, and that is fine. The JVM limit people quote
+  is 255 *parameters*, which rules out a data class holding hundreds of keys, not an `object` (one
+  with 1000 keys compiled on every target). Past a few hundred keys, split them into one `object`
+  per feature, still inside the storage module so their constructors stay `internal`, plus one
+  combined list for the migration. The reason is ownership and merge conflicts, not the compiler.
+  Callers do not change: native code keeps its getter/setter wrapper, and shared code uses the
+  keys directly.
+
+### How much to trust this
+
+- **These are emulator and simulator numbers, not phone numbers.** Read them as DataStore relative
+  to the old store on the same machine, not as absolute promises.
+- **The host was under memory pressure** (a browser and both device images running), so the
+  first Android run was discarded. The runs above were made with only one device image running at
+  a time. Android ranges are still wide, the heavy profile most of all, so the medians matter more
+  than single runs.
+- **Both stores read from a warm OS file cache** after the first launch, which is also the common
+  real case.
+- **Debug builds only.** Release builds would be faster for both stores.
+- **Not measured:** physical devices, release builds, memory use, a store update in the wild, and
+  a process killed during a save.
 
 ## How the work was run
 

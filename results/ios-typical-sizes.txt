@@ -1,0 +1,1 @@
+ios,typical,new_store_bytes=70899,old_store_bytes=134650
