@@ -18,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,17 +29,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.example.unifiedprefs.storage.PrefKeys
+import com.example.unifiedprefs.storage.prefsRepository
+import com.example.unifiedprefs.ui.SharedSettingsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = LegacyPrefs(applicationContext)
         setContent {
-            var dark by remember { mutableStateOf(prefs.darkMode) }
+            val repo = prefsRepository(this)
+            val dark by repo.observeBoolean(PrefKeys.darkMode)
+                .collectAsState(initial = repo.getBoolean(PrefKeys.darkMode))
+            val storedName by repo.observeString(PrefKeys.userName)
+                .collectAsState(initial = repo.getString(PrefKeys.userName))
+            val count by repo.observeInt(PrefKeys.launchCount)
+                .collectAsState(initial = repo.getInt(PrefKeys.launchCount))
             MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.safeDrawingPadding().padding(16.dp)) {
-                        NativeSettings(prefs, dark) { dark = it; prefs.darkMode = it }
+                        NativeSettings(
+                            dark = dark,
+                            storedName = storedName,
+                            count = count,
+                            onDarkChange = { prefs.darkMode = it },
+                            onNameChange = { prefs.userName = it },
+                        )
+                        SharedSettingsScreen(prefsRepository(this@MainActivity))
                     }
                 }
             }
@@ -46,9 +64,18 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun NativeSettings(prefs: LegacyPrefs, dark: Boolean, onDarkChange: (Boolean) -> Unit) {
-    var name by remember { mutableStateOf(prefs.userName) }
-    val count = remember { prefs.launchCount }
+fun NativeSettings(
+    dark: Boolean,
+    storedName: String,
+    count: Int,
+    onDarkChange: (Boolean) -> Unit,
+    onNameChange: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf(storedName) }
+    // Follow the observed value only when it differs, so typing is not overwritten.
+    LaunchedEffect(storedName) {
+        if (name != storedName) name = storedName
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Native (LegacyPrefs)", style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -61,7 +88,7 @@ fun NativeSettings(prefs: LegacyPrefs, dark: Boolean, onDarkChange: (Boolean) ->
         }
         OutlinedTextField(
             value = name,
-            onValueChange = { name = it; prefs.userName = it },
+            onValueChange = { name = it; onNameChange(it) },
             label = { Text("Native user name") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
