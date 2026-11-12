@@ -1,20 +1,22 @@
 package com.example.unifiedprefs
 
 import android.content.Context
+import com.example.unifiedprefs.storage.PrefKeys
+import com.example.unifiedprefs.storage.prefsRepository
 
 /** The app's existing preferences class. Its public surface must not change during the migration. */
 class LegacyPrefs(context: Context) {
-    private val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    private val repo = prefsRepository(context)
 
     var darkMode: Boolean
-        get() = prefs.getBoolean("dark_mode", false)
-        set(value) = prefs.edit().putBoolean("dark_mode", value).apply()
+        get() = repo.getBoolean(PrefKeys.darkMode)
+        set(value) = repo.putBoolean(PrefKeys.darkMode, value)
 
     var launchCount: Int
-        get() = prefs.getInt("launch_count", 0)
-        set(value) = prefs.edit().putInt("launch_count", value).apply()
+        get() = repo.getInt(PrefKeys.launchCount)
+        set(value) = repo.putInt(PrefKeys.launchCount, value)
 
     var userName: String
-        get() = prefs.getString("user_name", "") ?: ""
-        set(value) = prefs.edit().putString("user_name", value).apply()
+        get() = repo.getString(PrefKeys.userName)
+        set(value) = repo.putString(PrefKeys.userName, value)
 }
