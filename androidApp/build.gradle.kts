@@ -6,6 +6,8 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":storage"))
+    implementation(project(":shared-ui"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
