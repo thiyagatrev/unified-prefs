@@ -8,6 +8,11 @@ targets:
     type: application
     platform: iOS
     sources: [iosApp]
+    info:
+      path: iosApp/Info.plist
+      properties:
+        # Compose Multiplatform refuses to start on iPhone without this key.
+        CADisableMinimumFrameDurationOnPhone: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.unifiedprefs
