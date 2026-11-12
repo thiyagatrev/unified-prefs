@@ -28,6 +28,7 @@ class PrefsRepository internal constructor(
     private val savedVersion = MutableStateFlow(0L)
     private val saveSignal = Channel<Unit>(Channel.CONFLATED)
     private val failures = MutableStateFlow(0)
+    private val saves = MutableStateFlow(0)
 
     /** Number of background saves that failed. Memory keeps the value; the next save retries it. */
     val saveFailures: StateFlow<Int> = failures
@@ -40,6 +41,7 @@ class PrefsRepository internal constructor(
                 val snapshot = state.value
                 try {
                     dataStore.updateData { snapshot.prefs }
+                    saves.update { it + 1 }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -64,28 +66,42 @@ class PrefsRepository internal constructor(
     fun getString(key: StringKey): String = state.value.prefs[key.key] ?: key.default
     fun putString(key: StringKey, value: String) = write { it[key.key] = value }
 
-    // Contract R3 (stubs until WP-2).
-    fun getLong(key: LongKey): Long = TODO("WP-2")
-    fun putLong(key: LongKey, value: Long): Unit = TODO("WP-2")
-    fun observeLong(key: LongKey): Flow<Long> = TODO("WP-2")
+    fun getLong(key: LongKey): Long = state.value.prefs[key.key] ?: key.default
+    fun putLong(key: LongKey, value: Long) = write { it[key.key] = value }
+    fun observeLong(key: LongKey): Flow<Long> =
+        state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
 
-    fun getFloat(key: FloatKey): Float = TODO("WP-2")
-    fun putFloat(key: FloatKey, value: Float): Unit = TODO("WP-2")
-    fun observeFloat(key: FloatKey): Flow<Float> = TODO("WP-2")
+    fun getFloat(key: FloatKey): Float = state.value.prefs[key.key] ?: key.default
+    fun putFloat(key: FloatKey, value: Float) = write { it[key.key] = value }
+    fun observeFloat(key: FloatKey): Flow<Float> =
+        state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
 
-    fun getDouble(key: DoubleKey): Double = TODO("WP-2")
-    fun putDouble(key: DoubleKey, value: Double): Unit = TODO("WP-2")
-    fun observeDouble(key: DoubleKey): Flow<Double> = TODO("WP-2")
+    fun getDouble(key: DoubleKey): Double = state.value.prefs[key.key] ?: key.default
+    fun putDouble(key: DoubleKey, value: Double) = write { it[key.key] = value }
+    fun observeDouble(key: DoubleKey): Flow<Double> =
+        state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
 
-    fun getStringSet(key: StringSetKey): Set<String> = TODO("WP-2")
-    fun putStringSet(key: StringSetKey, value: Set<String>): Unit = TODO("WP-2")
-    fun observeStringSet(key: StringSetKey): Flow<Set<String>> = TODO("WP-2")
+    fun getStringSet(key: StringSetKey): Set<String> = state.value.prefs[key.key] ?: key.default
+    fun putStringSet(key: StringSetKey, value: Set<String>) = write { it[key.key] = value }
+    fun observeStringSet(key: StringSetKey): Flow<Set<String>> =
+        state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
 
     /** The current value of any key, boxed; the key's default if unset. */
-    fun valueOf(key: PrefKey): Any = TODO("WP-2")
+    fun valueOf(key: PrefKey): Any {
+        val prefs = state.value.prefs
+        return when (key) {
+            is BoolKey -> prefs[key.key] ?: key.default
+            is IntKey -> prefs[key.key] ?: key.default
+            is LongKey -> prefs[key.key] ?: key.default
+            is FloatKey -> prefs[key.key] ?: key.default
+            is DoubleKey -> prefs[key.key] ?: key.default
+            is StringKey -> prefs[key.key] ?: key.default
+            is StringSetKey -> prefs[key.key] ?: key.default
+        }
+    }
 
     /** Saves completed successfully since this repository was created. */
-    val saveCount: StateFlow<Int> get() = TODO("WP-2")
+    val saveCount: StateFlow<Int> = saves
 
     fun observeBoolean(key: BoolKey): Flow<Boolean> =
         state.map { it.prefs[key.key] ?: key.default }.distinctUntilChanged()
