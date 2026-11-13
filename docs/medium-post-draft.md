@@ -245,6 +245,6 @@ The question I started with was whether one KMP storage module could sit under t
 
 The bigger lesson was not about DataStore at all. It was the registry: making the compiler, not a code review, the thing that decides where a preference key may be declared.
 
-The sample app, the generator, the benchmark scripts and the raw results are on GitHub: **[link to the sample repository]**.
+The sample app, the generator, the benchmark scripts and the raw results are on GitHub: **https://github.com/thiyagatrev/unified-prefs**.
 
 If you have tried something similar, especially on real devices or with Release builds, I would love to compare numbers.
