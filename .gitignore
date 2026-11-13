@@ -13,3 +13,4 @@ captures/
 *.log
 .claude/
 build/genprefs/
+__pycache__/
