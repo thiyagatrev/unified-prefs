@@ -1,1 +1,1 @@
-android,heavy,new_store_bytes=2516116,old_store_bytes=4531641
+android,heavy,new_store_bytes=2529502,old_store_bytes=4548518

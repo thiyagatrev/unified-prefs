@@ -15,6 +15,7 @@ import json
 import os
 import plistlib
 import random
+import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
@@ -55,6 +56,11 @@ EMOJI = ["\U0001F64F", "\U0001F680", "\U0001F389", "✨"]
 TAG_WORDS = ["beta", "gold", "new", "sync", "pinned", "cache", "ui", "a", "z"]
 
 
+# Longs other than the three extremes are millisecond timestamps between 2015 and 2030.
+TS_MIN_MS = 1_420_070_400_000
+TS_MAX_MS = 1_893_456_000_000
+
+
 def f32(x):
     return struct.unpack(">f", struct.pack(">f", x))[0]
 
@@ -72,11 +78,11 @@ def short_string(rng, i):
 
 def medium_string(rng, i):
     if i % 2 == 0:
-        raw = bytes(rng.getrandbits(8) for _ in range(rng.randint(150, 500)))
+        raw = bytes(rng.getrandbits(8) for _ in range(rng.randint(800, 3000)))
         return base64.b64encode(raw).decode("ascii")
     obj = {"user": rng.choice(WORDS), "scopes": [rng.choice(WORDS) for _ in range(rng.randint(2, 8))],
            "exp": rng.randint(1_700_000_000, 1_900_000_000), "note": rng.choice(TAMIL) + " " + rng.choice(EMOJI),
-           "blob": base64.b64encode(bytes(rng.getrandbits(8) for _ in range(rng.randint(100, 300)))).decode()}
+           "blob": base64.b64encode(bytes(rng.getrandbits(8) for _ in range(rng.randint(800, 2700)))).decode()}
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -110,7 +116,7 @@ def generate(profile):
                 value = [-2147483648, 2147483647, 0][i] if i < 3 else rng.randint(-2**31, 2**31 - 1)
                 default = 0
             elif kind == "long":
-                value = [-2**63, 2**63 - 1, 0][i] if i < 3 else rng.randint(-2**63, 2**63 - 1)
+                value = [-2**63, 2**63 - 1, 0][i] if i < 3 else rng.randint(TS_MIN_MS, TS_MAX_MS)
                 default = 0
             elif kind == "float":
                 value = f32(rng.uniform(-1000.0, 1000.0) if i % 2 else rng.random())
@@ -124,7 +130,9 @@ def generate(profile):
             elif kind == "large":
                 value, default = large_string(big_rng, big_rng.randint(lo, hi)), ""
             else:
-                value = {rng.choice(TAG_WORDS) + str(rng.randint(0, 9)) for _ in range(rng.randint(1, 6))}
+                value, size = set(), rng.randint(3, 50)
+                while len(value) < size:
+                    value.add(rng.choice(TAG_WORDS) + str(rng.randint(0, 99)))
                 default = set()
             keys.append({"name": "%s%04d" % (prefix, i), "kind": kind, "value": value, "default": default})
     return keys
@@ -171,6 +179,12 @@ def key_checksum(keys, android):
 
 # ---------- outputs ----------
 
+def text(s):
+    """Element text escaped as Android's FastXmlSerializer writes it: & < > " and chars below 0x20."""
+    out = escape(s, {'"': "&quot;"})
+    return "".join("&#%d;" % ord(c) if ord(c) < 0x20 else c for c in out)
+
+
 def attr(s):
     return escape(s, {'"': "&quot;"})
 
@@ -193,10 +207,10 @@ def android_xml(keys):
         elif kind == "set":
             out.append('    <set name="%s">' % n)
             for e in sorted(v):
-                out.append("        <string>%s</string>" % escape(e))
+                out.append("        <string>%s</string>" % text(e))
             out.append("    </set>")
         else:
-            out.append('    <string name="%s">%s</string>' % (n, escape(v)))
+            out.append('    <string name="%s">%s</string>' % (n, text(v)))
     out.append("</map>")
     return ("\n".join(out) + "\n").encode("utf-8")
 
@@ -379,10 +393,42 @@ def check_sets_ascii():
             assert all(e.isascii() for e in k["value"])
 
 
+def check_xml_escapes_like_android():
+    # Android's FastXmlSerializer writes '"' in text as &quot; and characters below 0x20 as &#N;.
+    # A fixture with raw quotes is a smaller, cheaper file than any real user has.
+    for profile in ("typical", "heavy"):
+        text = android_xml(generate(profile)).decode("utf-8")
+        for body in re.findall(r"<string(?: name=\"[^\"]*\")?>(.*?)</string>", text, re.S):
+            assert '"' not in body, "raw quote in string text (%s)" % profile
+            assert not any(ord(c) < 0x20 for c in body), "raw control char in string text (%s)" % profile
+
+
+def check_medium_sizes():
+    for k in generate("typical"):
+        if k["kind"] == "medium":
+            n = len(k["value"].encode("utf-8"))
+            assert 1024 <= n <= 4096, "%s is %d bytes" % (k["name"], n)
+
+
+def check_set_sizes():
+    for k in generate("typical"):
+        if k["kind"] == "set":
+            assert 3 <= len(k["value"]) <= 50, "%s has %d entries" % (k["name"], len(k["value"]))
+
+
+def check_longs_are_timestamps():
+    extremes = {-2**63, 2**63 - 1, 0}
+    for k in generate("typical"):
+        if k["kind"] == "long" and k["value"] not in extremes:
+            assert TS_MIN_MS <= k["value"] <= TS_MAX_MS, "%s=%d is not a 2015-2030 ms timestamp" % (k["name"], k["value"])
+
+
 CHECKS = [("countsMatch", check_counts), ("namesUniqueAndAscii", check_names), ("deterministic", check_deterministic),
           ("xmlRoundTrip", check_xml_roundtrip), ("plistRoundTrip", check_plist_roundtrip),
           ("floatsRoundTrip", check_floats), ("sizesInRange", check_sizes), ("checksumVector", check_vector),
-          ("stringsCoverSpecials", check_specials), ("intExtremes", check_extremes), ("setsAscii", check_sets_ascii)]
+          ("stringsCoverSpecials", check_specials), ("intExtremes", check_extremes), ("setsAscii", check_sets_ascii),
+          ("xmlEscapesLikeAndroid", check_xml_escapes_like_android), ("mediumStrings1To4KB", check_medium_sizes),
+          ("setsHave3To50Entries", check_set_sizes), ("longsAreTimestamps", check_longs_are_timestamps)]
 
 
 def self_check():
