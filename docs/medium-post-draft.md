@@ -1,38 +1,87 @@
-# One Preferences Store for Android, iOS and Compose Multiplatform
+# I Put SharedPreferences and NSUserDefaults Behind One DataStore. Here’s What 200 Keys Showed.
 
-### I moved SharedPreferences and NSUserDefaults onto a single DataStore without touching a single call site. Then I loaded it with 200 real-looking keys to see where it breaks.
+### In a sample app, I moved both platforms’ preferences onto one Kotlin Multiplatform store without changing a single call site, then measured it against the old stores.
 
 ---
 
-If you are moving an existing Android app and an existing iOS app towards Kotlin Multiplatform, preferences are one of the first things that hurt. Both apps already have years of user data in them: a dark-mode flag, an onboarding state, a cached token, a launch counter. The Android side reads it from `SharedPreferences`, the iOS side from `NSUserDefaults`, and the new shared Compose screens need to read and write the same values.
+**In short:**
 
-The usual first instinct is to keep both stores and put a common interface over them. That works, but you still have two stores, two sets of key names, two serialisation formats and two migration stories, forever.
+- Every one of 200 values of every type migrated exactly, on both platforms.
+- Android start-up stayed the same at normal sizes and got about 6× faster with megabytes stored.
+- iOS start-up got about 13 ms slower than `UserDefaults`.
+
+---
+
+If you are moving an existing Android app and an existing iOS app towards Kotlin Multiplatform, preferences are one of the first things that hurt. Both apps already have years of user data in them: a dark-mode flag, an onboarding state, a cached token, a launch counter. The Android side reads it from `SharedPreferences`, the iOS side from `NSUserDefaults`, and the new shared Compose screens need to read and write the same values. This post assumes your apps already ship a Kotlin Multiplatform framework; adding one only for preferences is a different trade-off.
 
 I wanted to know whether there was a simpler end state: **one store, one list of keys, and the existing native code left exactly as it is.** So I built a small sample app on both platforms to test the idea, and then pushed it with a realistic amount of data. This post is what I found, including the parts that did not go my way.
+
+---
+
+## Why not multiplatform-settings?
+
+The obvious answer is multiplatform-settings, and it was the first thing I reached for. It puts one Kotlin API over `SharedPreferences` on Android and `NSUserDefaults` on iOS. Existing native code and new shared code then read the same values with no migration at all. If you want the lowest-risk first step, it is a very good one.
+
+I wanted a different end state, for three reasons:
+
+- **Wrap now, migrate later.** A wrapper keeps both platform stores. Once most of the app is shared code, you will likely want one store anyway, and then you migrate a second time. I would rather migrate once, at the start.
+- **Two engines behave like two engines.** The same call goes to XML on one platform and a plist daemon on the other, with different speeds, size limits and failure modes. I wanted one implementation, so a behaviour or a measurement means the same thing everywhere.
+- **Keys still live in two places.** A wrapper does not stop each platform declaring its own key names and defaults. One store with one key registry does.
+
+The trade-off is real: a migration on each platform, and a store your iOS code reaches through a Kotlin framework. The rest of this post is about whether that price is worth paying.
+
+## The idea I dropped: my own C++ store
+
+My first instinct was to write a small C++ key-value library and call it from Android, iOS and shared code alike. I dropped it for three reasons:
+
+- **C++ does not make stored data safer.** Encryption strength depends on where the key is kept (the Android Keystore or the iOS Keychain), not on the language that does the writing. A key compiled into a native library can be pulled out with a disassembler.
+- **I would own the hard parts.** That means JNI on Android, cinterop on iOS, a crash-safe file format, locking, and builds for every CPU architecture.
+- **The design already exists.** Cross-platform native key-value stores are available off the shelf. If I ever needed that architecture, I would adopt one rather than write it.
+
+That left one question: which existing store could be the single engine on both platforms?
+
+## Why DataStore?
+
+I wanted the end state to depend on as little as possible:
+
+- **It is AndroidX.** Google maintains it, and its Preferences flavour officially supports Kotlin Multiplatform, Android and iOS included.
+- **Half the migration already exists.** DataStore ships `SharedPreferencesMigration`, so only iOS needed a migration written by hand.
+- **It covers the types both old stores hold:** Boolean, Int, Long, Float, Double, String and string sets.
+- **Writes are atomic.** It writes a temporary file and renames it, so a crash mid-save leaves the old file intact rather than a half-written one.
+- **No new native library.** On iOS it runs as Kotlin inside the framework the app already ships.
+
+DataStore has a reputation for crashing on iOS. In my reading, both usual causes are usage errors that this design rules out: two instances open on the same file (the module allows exactly one), and a path outside the app's sandbox (the store lives in Application Support).
+
+What I set aside:
+
+- **a wrapper over each platform's store** (it keeps two stores);
+- **a native memory-mapped key-value store** (fast, but another native dependency to vet and maintain on both platforms);
+- **a database such as SQLDelight or Room** (more than key-value preferences need);
+- **a hand-written file format** (I would be rebuilding what DataStore already does).
 
 ---
 
 ## The idea in one picture
 
 ```
- Native Android code      Native iOS code       Shared Compose UI
- (LegacyPrefs.kt)         (LegacyPrefs.swift)   (SettingsScreen)
-        │                        │                      │
-        └──────── same getters and setters ─────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   :storage (KMP module) │
-                    │  PrefKeys   (registry)  │
-                    │  PrefsRepository        │
-                    │   └ in-memory snapshot  │
-                    │   └ background saver    │
-                    │  Jetpack DataStore      │
-                    └─────────────────────────┘
+LegacyPrefs.kt    (Android) ─┐
+LegacyPrefs.swift (iOS)     ─┤
+SettingsScreen    (Compose) ─┤
+  same getters and setters   │
+                             ▼
+ ┌───────────────────────────┐
+ │ :storage (KMP module)     │
+ │  PrefKeys (registry)      │
+ │  PrefsRepository          │
+ │   └ in-memory snapshot    │
+ │   └ background saver      │
+ │  Jetpack DataStore        │
+ └───────────────────────────┘
 ```
 
 Four rules:
 
-1. **One KMP module owns the storage.** It contains one Jetpack DataStore (Preferences) per app, created once per process.
+1. **One KMP module owns the storage.** It contains one Jetpack DataStore (Preferences) per app, created once per process. The store's factory and the repository's constructor are `internal`, so the only way in is one accessor per platform. That makes "one instance per process" something the compiler enforces. DataStore is single-process, though: an Android component in another process, or an iOS widget or extension, gets its own copy.
 2. **Reads come from memory and are synchronous.** Native code reads preferences synchronously at app start; DataStore only offers a `Flow`. So the repository loads the file once, keeps a snapshot in memory, and answers every `get` from that snapshot.
 3. **Writes update memory immediately and save in the background.** A `put` is visible to the next `get` at once, just like `SharedPreferences.apply()`.
 4. **Keys can only be declared in one place.** Every key is a typed object in a registry inside the storage module. Nothing outside the module can invent a key or pass a raw string.
@@ -47,14 +96,12 @@ The existing native preference classes keep their public API. Only their insides
 
 ```kotlin
 sealed class PrefKey(val name: String, val legacyIosName: String)
-
 class BoolKey internal constructor(
     name: String, val default: Boolean, legacyIosName: String = name,
 ) : PrefKey(name, legacyIosName) {
     internal val key = booleanPreferencesKey(name)
 }
 // IntKey, LongKey, FloatKey, DoubleKey, StringKey, StringSetKey look the same
-
 object PrefKeys {
     val darkMode    = BoolKey("dark_mode", false, legacyIosName = "isDarkMode")
     val launchCount = IntKey("launch_count", 0, legacyIosName = "launchCount")
@@ -75,7 +122,6 @@ class PrefsRepository internal constructor(
 ) {
     // Blocks once, on first access. Every read after this is from memory.
     private val state = MutableStateFlow(Snapshot(runBlocking { dataStore.data.first() }, 0))
-
     fun getBoolean(key: BoolKey) = state.value.prefs[key.key] ?: key.default
     fun putBoolean(key: BoolKey, value: Boolean) = write { it[key.key] = value }
     fun observeBoolean(key: BoolKey): Flow<Boolean> =
@@ -86,6 +132,8 @@ class PrefsRepository internal constructor(
 
 The saver runs on a single-threaded scope and always writes the *latest whole snapshot*, not individual changes. That makes save order irrelevant: if ten writes pile up, the next save writes the state after all ten. A failed save is counted and retried by the next one; it never crashes the app.
 
+Yes, that is `runBlocking`, and the first access happens at app start on the main thread in this sample. It blocks once: about 110–120 ms on the Android emulator and 14–52 ms on the iOS simulator in my runs, and longer on the one launch that migrates. If that matters for your start-up, warm the store up on a background thread before the first read; more on that below.
+
 ### Native code does not change
 
 Android, before and after, from the caller's point of view:
@@ -93,7 +141,6 @@ Android, before and after, from the caller's point of view:
 ```kotlin
 class LegacyPrefs(context: Context) {
     private val repo = prefsRepository(context)   // was: context.getSharedPreferences(...)
-
     var darkMode: Boolean
         get() = repo.getBoolean(PrefKeys.darkMode)
         set(value) = repo.putBoolean(PrefKeys.darkMode, value)
@@ -108,6 +155,8 @@ var isDarkMode: Bool {
     set { repo.putBoolean(key: PrefKeys.shared.darkMode, value: newValue) }
 }
 ```
+
+Reads and writes need no bridge, because they are plain synchronous functions. Swift cannot consume a Kotlin Flow directly, so for observing changes the module exposes small watch functions that take a callback and return a cancel handle. That kept the sample free of SKIE or KMP-NativeCoroutines, though either would work.
 
 Every existing `prefs.darkMode = true` in both apps keeps compiling and keeps working.
 
@@ -199,7 +248,7 @@ What I take from this:
 
 **On Android at heavy sizes, DataStore is about six times faster to start.** Parsing 4.3 MB of XML is slower than reading 2.4 MB of protobuf. DataStore won every one of the eleven runs.
 
-**On iOS, DataStore is slower than `UserDefaults` at start-up**: about 10 ms more at normal sizes, about 45 ms more in the heavy profile, plus 2–4 ms to create the key objects. `UserDefaults` is served by a system daemon that keeps your preferences in memory between launches; DataStore reads its file in your process every time. The Kotlin/Native code in this test was also a Debug build.
+**On iOS, DataStore is slower than `UserDefaults` at start-up**: about 10 ms more at normal sizes, about 46 ms more in the heavy profile, plus 2–4 ms to create the key objects. `UserDefaults` is served by a system daemon that keeps your preferences in memory between launches; DataStore reads its file in your process every time. The Kotlin/Native code in this test was also a Debug build.
 
 **Each write is slower, but nobody waits for it.** Both DataStore and `SharedPreferences` rewrite the whole file on every save. DataStore took 2–4× longer per save in these runs. The value is in memory the moment you set it, so the UI never waits. And when writes come quickly, they are batched: 100 writes in a row, like someone typing, needed only 2–9 save passes.
 
@@ -227,6 +276,8 @@ The values were only 2.4 MB, but a binary plist stores any string with a single 
 
 **If start-up time matters, warm the store up early on a background thread.** For example, call the repository accessor from a thread you start in `Application.onCreate`, or from a background queue at iOS launch. It only helps if your first synchronous read comes after the warm-up has started.
 
+**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. In my experience they are a handful of keys, and they can stay platform-specific.
+
 **Know the two migration traps:**
 
 - **Android:** `SharedPreferencesMigration` deletes the keys it copies. That deletion is what stops it running twice, but it also means a rollback to an old build starts from empty.
@@ -240,7 +291,7 @@ I want to be straight about the limits:
 
 - **Emulator and simulator only, and Debug builds only.** Debug slows down DataStore but not `SharedPreferences` or `UserDefaults`, which are system code. So these numbers are the worst case for DataStore. I would measure Release builds on real phones before quoting absolute differences.
 - **The test ran on a busy laptop.** I waited for the machine to go quiet before each run and threw away runs made under heavy load, but this is not a lab.
-- **Not covered:** encryption, iOS app groups and extensions, memory use, real store updates, and a process killed in the middle of a save.
+- **Not covered:** encryption, multi-process apps, iOS app groups and extensions, memory use, real store updates, and a process killed in the middle of a save.
 
 ---
 
