@@ -280,7 +280,23 @@ In the heavy profile, the old iOS plist was 4.8 MB on disk. Every write to it ma
 
 **If start-up time matters, warm the store up early on a background thread.** For example, call the repository accessor from a thread you start in `Application.onCreate`, or from a background queue at iOS launch. It only helps if your first synchronous read comes after the warm-up has started.
 
-**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. They are usually a handful of keys, and they can stay platform-specific.
+**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values by default; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. They are usually a handful of keys, and they can stay platform-specific.
+
+**You can encrypt the whole store, too.** DataStore exposes the hook in common code: wrap its own `PreferencesSerializer` in a serializer that encrypts the bytes on write and decrypts them on read, then build the store with `PreferenceDataStoreFactory.create(storage = OkioStorage(...))`.
+
+```kotlin
+class EncryptingPreferencesSerializer(private val cipher: PrefsCipher) : OkioSerializer<Preferences> {
+    override val defaultValue get() = PreferencesSerializer.defaultValue
+    override suspend fun readFrom(source: BufferedSource) =
+        PreferencesSerializer.readFrom(Buffer().write(cipher.decrypt(source.readByteArray())))
+    override suspend fun writeTo(t: Preferences, sink: BufferedSink) {
+        val plain = Buffer().also { PreferencesSerializer.writeTo(t, it) }.readByteArray()
+        sink.write(cipher.encrypt(plain))
+    }
+}
+```
+
+I tested this in the sample on Android, iOS and the JVM: every value round-trips and no plaintext reaches the file. Kotlin Multiplatform has no common crypto library, so each platform supplies the cipher: AES-GCM through `javax.crypto` with the key in Android Keystore, and on iOS a small Swift class using CryptoKit with the key in the Keychain. Only the AES-GCM path on the JVM is tested here; the platform key storage is not.
 
 **Know the two migration traps:**
 
@@ -295,7 +311,7 @@ I want to be straight about the limits:
 
 - **Emulator and simulator only, and Debug builds only.** Debug slows down DataStore but not `SharedPreferences` or `UserDefaults`, which are system code. So these numbers are the worst case for DataStore. I would measure Release builds on real phones before quoting absolute differences.
 - **The test ran on a busy laptop.** I waited for the machine to go quiet before each run and threw away runs made under heavy load, but this is not a lab.
-- **Not covered:** encryption, multi-process apps, iOS app groups and extensions, memory use, real store updates, and a process killed in the middle of a save.
+- **Not covered:** platform key storage for encryption (Android Keystore, iOS Keychain), multi-process apps, iOS app groups and extensions, memory use, real store updates, and a process killed in the middle of a save.
 
 ---
 

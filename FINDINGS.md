@@ -156,9 +156,20 @@ were run again on the Android emulator and the iOS simulator, and passed.
   cancel handle; no extra library was needed. This bridge is verified by hand only.
 - **One iOS framework.** `:shared-ui` exports `:storage`, so Swift imports a single `Shared` module.
 
+## Encryption: possible, hook verified
+
+DataStore 1.3.0 lets a Preferences store use a custom serializer from common code:
+`PreferenceDataStoreFactory.create(storage = OkioStorage(FileSystem.SYSTEM, serializer) { path })`.
+Wrapping the public `PreferencesSerializer` in a serializer that encrypts on write and decrypts on read
+keeps only ciphertext in the file (`EncryptedStoreTest`, common: passes on JVM, Android host and iOS
+simulator). With real AES-256-GCM on the JVM (`AesGcmEncryptedStoreTest`), values round-trip, no plaintext
+is on disk, and a wrong key fails the GCM tag check instead of returning data. Not tested: Android Keystore
+key storage, an iOS cipher (CryptoKit is Swift-only, so a Swift class would implement the Kotlin cipher
+interface, with the key in the Keychain), the cost of encryption, and migrating an existing plain store.
+
 ## Not covered
 
-- Encryption of stored values.
+- Platform key storage and the cost of encryption (see "Encryption: possible, hook verified").
 - iOS widgets, extensions and app groups.
 - Physical devices, release builds, and real App Store or Play Store updates.
 - Archived iOS objects (`NSData`, `NSDate`, dictionaries) in `UserDefaults`.
