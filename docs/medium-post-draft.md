@@ -10,7 +10,7 @@
 - Android start-up stayed about the same at normal sizes (plus ~13 ms to create the key objects) and got about 6× faster with megabytes stored.
 - iOS start-up got about 13 ms slower than `UserDefaults` at normal sizes, key setup included.
 
-*This is an independent study, done in my own time. If it helps your team, you can [support the next one](https://buymeatea.in/thiyagarajandhanapal).*
+*The code and raw results are [on GitHub](https://github.com/thiyagatrev/unified-prefs). This is an independent study, done in my own time; if it helps your team, you can [support the next one](https://buymeatea.in/thiyagarajandhanapal).*
 
 ---
 
@@ -303,7 +303,11 @@ The question I started with was whether one KMP storage module could sit under t
 
 The bigger lesson was not about DataStore at all. It was the registry: making the compiler, not a code review, the thing that decides where a preference key may be declared.
 
-The sample app, the generator, the benchmark scripts and the raw results are on GitHub: **https://github.com/thiyagatrev/unified-prefs**.
+## Get the code
+
+The sample app, the generator, the benchmark scripts and the raw results are all public. Clone it, run the benchmark on your own devices, and compare your numbers with mine.
+
+## [View the project on GitHub →](https://github.com/thiyagatrev/unified-prefs)
 
 If you have tried something similar, especially on real devices or with Release builds, I would love to compare numbers.
 
