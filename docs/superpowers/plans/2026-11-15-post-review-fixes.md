@@ -12,7 +12,7 @@
 
 **Tech Stack:** Kotlin Multiplatform, Jetpack DataStore 1.3.0, Medium editor in your Chrome (Claude in Chrome), `gh`.
 
-**Spec:** the reader review given in conversation on 2026-11-15, and the singleton check below. There is no separate spec file; rulings made from them are recorded in this plan.
+**Spec:** the reader review given in conversation on 2026-11-15, the singleton check below, and the design discussion of 2026-11-11 (why multiplatform-settings was set aside, the dropped C++ idea, encryption, iOS DataStore crashes, Swift bridging), taken from the session transcript. There is no separate spec file; rulings made from them are recorded in this plan.
 
 ## Singleton check: what was found
 
@@ -80,8 +80,34 @@ Each step below changes one passage. The quoted text is the copy to use.
   - iOS start-up got about 13 ms slower than `UserDefaults`.
   ```
 - [ ] **Step 4: State the audience.** At the end of the first paragraph, add: `This post assumes your apps already ship a Kotlin Multiplatform framework; adding one only for preferences is a different trade-off.`
-- [ ] **Step 5: Add "Why not an existing library?"** as a paragraph after "The usual first instinct…":
-  `There are good multiplatform settings libraries, and most of them do exactly that: one API over each platform's own store. I wanted to test the other end state, where both apps end up on the same store and file format, so a value only ever has one home.`
+- [ ] **Step 5: Replace the "usual first instinct" paragraph with "Why not multiplatform-settings?"**, using the reasons from our 11 Nov discussion:
+  ```
+  ### Why not multiplatform-settings?
+
+  The obvious answer is multiplatform-settings, and it was the first thing I reached for. It puts one Kotlin API over `SharedPreferences` on Android and `NSUserDefaults` on iOS. Existing native code and new shared code then read the same values with no migration at all. If you want the lowest-risk first step, it is a very good one.
+
+  I wanted a different end state, for three reasons:
+
+  - **Wrap now, migrate later.** A wrapper keeps both platform stores. Once most of the app is shared code, you will likely want one store anyway, and then you migrate a second time. I would rather migrate once, at the start.
+  - **Two engines behave like two engines.** The same call goes to XML on one platform and a plist daemon on the other, with different speeds, size limits and failure modes. I wanted one implementation, so a behaviour or a measurement means the same thing everywhere.
+  - **Keys still live in two places.** A wrapper does not stop each platform declaring its own key names and defaults. One store with one key registry does.
+
+  The trade-off is real: a migration on each platform, and a store your iOS code reaches through a Kotlin framework. The rest of this post is about whether that price is worth paying.
+  ```
+
+- [ ] **Step 5a: Add "The idea I dropped"** as a short section right after "Why not multiplatform-settings?":
+  ```
+  ### The idea I dropped: my own C++ store
+
+  My first instinct was to write a small C++ key-value library and call it from Android, iOS and shared code alike. I dropped it for three reasons:
+
+  - **C++ does not make stored data safer.** Encryption strength depends on where the key is kept (the Android Keystore or the iOS Keychain), not on the language that does the writing. A key compiled into a native library can be pulled out with a disassembler.
+  - **I would own the hard parts.** That means JNI on Android, cinterop on iOS, a crash-safe file format, locking, and builds for every CPU architecture.
+  - **The design already exists.** Cross-platform native key-value stores are available off the shelf. If I ever needed that architecture, I would adopt one rather than write it.
+
+  That left one question: which existing store could be the single engine on both platforms?
+  ```
+  Constraint: do not name any store the team excluded.
 - [ ] **Step 5b: Add "Why DataStore?"** as a short section right before "The idea in one picture":
   ```
   ### Why DataStore?
@@ -93,6 +119,8 @@ Each step below changes one passage. The quoted text is the copy to use.
   - **It covers the types both old stores hold:** Boolean, Int, Long, Float, Double, String and string sets.
   - **Writes are atomic.** It writes a temporary file and renames it, so a crash mid-save leaves the old file intact rather than a half-written one.
   - **No new native library.** On iOS it runs as Kotlin inside the framework the app already ships.
+
+  DataStore has a reputation for crashing on iOS. In my reading, both usual causes are usage errors that this design rules out: two instances open on the same file (the module allows exactly one), and a path outside the app's sandbox (the store lives in Application Support).
 
   What I set aside:
   - **a wrapper over each platform's store** (it keeps two stores);
@@ -107,12 +135,19 @@ Each step below changes one passage. The quoted text is the copy to use.
 - [ ] **Step 7: Add singleton and process scope after rule 1 of "Four rules":**
   `The store's factory and the repository's constructor are internal, so the only way in is one accessor per platform. That makes "one instance per process" something the compiler enforces. DataStore is single-process, though: an Android component in another process, or an iOS widget or extension, gets its own copy.`
   Add `multi-process apps` to the "Not covered" bullet.
+- [ ] **Step 7a: Add the Swift bridging note** after the Swift `LegacyPrefs` snippet:
+  `Reads and writes need no bridge, because they are plain synchronous functions. Swift cannot consume a Kotlin Flow directly, so for observing changes the module exposes small watch functions that take a callback and return a cancel handle. That kept the sample free of SKIE or KMP-NativeCoroutines, though either would work.`
+
+- [ ] **Step 7b: Add where secrets belong** as a new bullet in "What I would tell a team adopting this":
+  `**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. In my experience they are a handful of keys, and they can stay platform-specific.`
+
 - [ ] **Step 8: Remove blank lines inside every code sample**, so Medium keeps each sample as one block. Join the parts with a single newline; nothing else changes.
 - [ ] **Step 9: Narrow the diagram to at most 40 characters per line** (stack the three callers vertically), so it does not scroll sideways on a phone. Check with:
   `python3 -I -c "import re;t=open('docs/medium-post-draft.md').read();d=t.split('\`\`\`')[1];print(max(len(l) for l in d.splitlines()))"`.
   Expected: ≤ 40.
 - [ ] **Step 10: Run a fact check.** Every number in the post must appear in FINDINGS: `grep -oE "[0-9.]+ ?(ms|KB|MB|×)" docs/medium-post-draft.md | sort -u`, each one checked against the FINDINGS tables. Expected: no number missing from FINDINGS.
-- [ ] **Step 11: Commit** `docs(post): review fixes: audience, why-not-a-library, runBlocking, singleton scope, summary`, and push to `origin main`.
+- [ ] **Step 10a: Check the length.** The additions bring the post to roughly 3,000 words, about a 12-minute read. If it goes past 3,300 words, shorten "The pieces" first; the results sections stay whole.
+- [ ] **Step 11: Commit** `docs(post): review fixes: why not multiplatform-settings, the dropped C++ idea, why DataStore, runBlocking, Swift bridging, secrets, singleton scope, summary`, and push to `origin main`.
 
 ### Task 3: Carry the changes into the Medium draft
 
