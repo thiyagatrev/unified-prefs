@@ -6,9 +6,9 @@
 
 **In short:**
 
-- Every one of 200 values of every type migrated exactly, on both platforms.
-- Android start-up stayed the same at normal sizes and got about 6× faster with megabytes stored.
-- iOS start-up got about 13 ms slower than `UserDefaults`.
+- All 200 keys (192 on Android, which has no Double) matched a checksum after migration, on both platforms.
+- Android start-up stayed about the same at normal sizes (plus ~13 ms to create the key objects) and got about 6× faster with megabytes stored.
+- iOS start-up got about 13 ms slower than `UserDefaults` at normal sizes, key setup included.
 
 ---
 
@@ -26,7 +26,7 @@ I wanted a different end state, for three reasons:
 
 - **Wrap now, migrate later.** A wrapper keeps both platform stores. Once most of the app is shared code, you will likely want one store anyway, and then you migrate a second time. I would rather migrate once, at the start.
 - **Two engines behave like two engines.** The same call goes to XML on one platform and a plist daemon on the other, with different speeds, size limits and failure modes. I wanted one implementation, so a behaviour or a measurement means the same thing everywhere.
-- **Keys still live in two places.** A wrapper does not stop each platform declaring its own key names and defaults. One store with one key registry does.
+- **Keys stay tied to two stores.** A wrapper can sit behind a shared key registry too (and I recommend one either way, below), but each native app can still reach its own platform store directly. With one store behind the registry, there is nothing else to reach.
 
 The trade-off is real: a migration on each platform, and a store your iOS code reaches through a Kotlin framework. The rest of this post is about whether that price is worth paying.
 
@@ -50,7 +50,7 @@ I wanted the end state to depend on as little as possible:
 - **Writes are atomic.** It writes a temporary file and renames it, so a crash mid-save leaves the old file intact rather than a half-written one.
 - **No new native library.** On iOS it runs as Kotlin inside the framework the app already ships.
 
-DataStore has a reputation for crashing on iOS. In my reading, both usual causes are usage errors that this design rules out: two instances open on the same file (the module allows exactly one), and a path outside the app's sandbox (the store lives in Application Support).
+DataStore has a reputation for crashing on iOS. In my reading, both usual causes are usage errors that this design rules out: two instances open on the same file (the module hands out exactly one, and app code cannot reach its factory), and a path outside the app's sandbox (the store lives in Application Support).
 
 What I set aside:
 
@@ -81,7 +81,7 @@ SettingsScreen    (Compose) ─┤
 
 Four rules:
 
-1. **One KMP module owns the storage.** It contains one Jetpack DataStore (Preferences) per app, created once per process. The store's factory and the repository's constructor are `internal`, so the only way in is one accessor per platform. That makes "one instance per process" something the compiler enforces. DataStore is single-process, though: an Android component in another process, or an iOS widget or extension, gets its own copy.
+1. **One KMP module owns the storage.** It contains one Jetpack DataStore (Preferences) per app, created once per process. The store's factory and the repository's constructor are `internal`, so the only way in is one accessor per platform. That way app code cannot reach this module's factory or constructor, so the only store it gets is the shared one. DataStore is single-process, though. An Android component in another process would open a second instance on the same file, which DataStore does not support (that needs its multi-process variant); an iOS widget or extension runs in its own sandbox and would get a separate, empty store.
 2. **Reads come from memory and are synchronous.** Native code reads preferences synchronously at app start; DataStore only offers a `Flow`. So the repository loads the file once, keeps a snapshot in memory, and answers every `get` from that snapshot.
 3. **Writes update memory immediately and save in the background.** A `put` is visible to the next `get` at once, just like `SharedPreferences.apply()`.
 4. **Keys can only be declared in one place.** Every key is a typed object in a registry inside the storage module. Nothing outside the module can invent a key or pass a raw string.
@@ -297,7 +297,7 @@ I want to be straight about the limits:
 
 ## Wrapping up
 
-The question I started with was whether one KMP storage module could sit under two existing native apps without anyone changing a call site and without losing a single user's data. On an emulator and a simulator, with 200 realistic keys, the answer was yes. Every value arrived exactly, Android start-up was the same or better, and iOS paid about 13 ms at normal sizes.
+The question I started with was whether one KMP storage module could sit under two existing native apps without anyone changing a call site and without losing a single user's data. On an emulator and a simulator, with 200 realistic keys, the answer was yes. Every value arrived exactly, Android start-up was about the same or better, and iOS paid about 13 ms at normal sizes.
 
 The bigger lesson was not about DataStore at all. It was the registry: making the compiler, not a code review, the thing that decides where a preference key may be declared.
 

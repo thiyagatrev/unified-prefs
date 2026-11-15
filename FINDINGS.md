@@ -142,10 +142,13 @@ were run again on the Android emulator and the iOS simulator, and passed.
 
 ## Design points that held up
 
-- **One store per process is enforced, not just documented.** `PrefsRepository`'s constructor and the DataStore
-  factory are `internal`; apps can only reach the store through `prefsRepository(context)` or
-  `IosStorage.shared.repo`. DataStore is single-process: Android components in another process, and iOS
-  widgets or extensions, would each get their own store.
+- **One store per process through this module.** `PrefsRepository`'s constructor and the DataStore
+  factory are `internal`; apps can only reach this module's store through `prefsRepository(context)` or
+  `IosStorage.shared.repo`. (The DataStore library itself is an `api` dependency, so Android app code
+  could still open its own DataStore; the module does not prevent that.) DataStore is single-process: an
+  Android component in another process would open a second instance on the same file, which DataStore
+  does not support without its multi-process variant; an iOS widget or extension runs in its own sandbox
+  and would get a separate, empty store.
 - **Key constructors are `internal`.** Native code cannot declare a key or pass a string; it can only
   use entries of `PrefKeys`. Defaults live on the key, so platforms cannot disagree.
 - **Swift sees a usable API.** `IosStorage.shared.repo.getBoolean(key: PrefKeys.shared.darkMode)` works
