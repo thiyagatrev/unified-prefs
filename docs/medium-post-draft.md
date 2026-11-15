@@ -10,7 +10,7 @@
 - Android start-up stayed about the same at normal sizes (plus ~13 ms to create the key objects) and got about 6× faster with megabytes stored.
 - iOS start-up got about 13 ms slower than `UserDefaults` at normal sizes, key setup included.
 
-*Building this took a lot of tea. If it helps you, you can [buy me one](https://buymeatea.in/thiyagarajandhanapal).*
+*This is an independent study, done in my own time. If it helps your team, you can [support the next one](https://buymeatea.in/thiyagarajandhanapal).*
 
 ---
 
@@ -309,8 +309,8 @@ If you have tried something similar, especially on real devices or with Release 
 
 ---
 
-## ☕ Fuel the next experiment
+## Support the next study
 
-The next test is the one this post could not run: Release builds on real Android and iOS phones. If this saved you a migration headache, a cup of tea helps fund it.
+This was an independent study, built and measured in my own time. The next one is the test this post could not run: Release builds on real Android and iOS hardware. If this helped your team make a decision, you can back that work directly.
 
-## [Buy me a tea →](https://buymeatea.in/thiyagarajandhanapal)
+## [Support this work →](https://buymeatea.in/thiyagarajandhanapal)
