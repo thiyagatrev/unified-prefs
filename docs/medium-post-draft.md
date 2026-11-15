@@ -1,6 +1,6 @@
-# I Put SharedPreferences and NSUserDefaults Behind One DataStore. Here’s What 200 Keys Showed.
+# I Moved 200 Preferences to One KMP Store Without Changing a Single Call Site
 
-### In a sample app, I moved both platforms’ preferences onto one Kotlin Multiplatform store without changing a single call site, then measured it against the old stores.
+### SharedPreferences and NSUserDefaults, unified on DataStore in a sample app. Every value migrated exactly, and the benchmarks against the old stores.
 
 ---
 
