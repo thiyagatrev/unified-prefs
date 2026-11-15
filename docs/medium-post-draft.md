@@ -1,6 +1,6 @@
-# I Moved 200 Preferences to One KMP Store Without Changing a Single Call Site
+# UnifiedPrefs: Migrating SharedPreferences and UserDefaults to a Single DataStore
 
-### SharedPreferences and NSUserDefaults, unified on DataStore in a sample app. Every value migrated exactly, and the benchmarks against the old stores.
+### One Kotlin Multiplatform source of truth for Android, iOS and Compose Multiplatform, with zero call-site changes, 200 keys migrated exactly, and benchmarks against the old stores.
 
 ---
 
@@ -9,6 +9,8 @@
 - All 200 keys (192 on Android, which has no Double) matched a checksum after migration, on both platforms.
 - Android start-up stayed about the same at normal sizes (plus ~13 ms to create the key objects) and got about 6× faster with megabytes stored.
 - iOS start-up got about 13 ms slower than `UserDefaults` at normal sizes, key setup included.
+
+*I designed this approach and directed the experiment; I used AI tools to help build the sample app, run the measurements and draft this post. Every number comes from the public repository.*
 
 *The code and raw results are [on GitHub](https://github.com/thiyagatrev/unified-prefs). This is an independent study, done in my own time; if it helps your team, you can [support the next one](https://buymeatea.in/thiyagarajandhanapal).*
 
@@ -278,7 +280,7 @@ In the heavy profile, the old iOS plist was 4.8 MB on disk. Every write to it ma
 
 **If start-up time matters, warm the store up early on a background thread.** For example, call the repository accessor from a thread you start in `Application.onCreate`, or from a background queue at iOS launch. It only helps if your first synchronous read comes after the warm-up has started.
 
-**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. In my experience they are a handful of keys, and they can stay platform-specific.
+**Keep secrets out of preferences.** DataStore, SharedPreferences and NSUserDefaults all store plain values; the operating system encrypts app files at rest, but anything that can read your process can read them. Tokens and passwords belong in the iOS Keychain and in Android Keystore-backed storage. They are usually a handful of keys, and they can stay platform-specific.
 
 **Know the two migration traps:**
 
