@@ -304,3 +304,7 @@ The bigger lesson was not about DataStore at all. It was the registry: making th
 The sample app, the generator, the benchmark scripts and the raw results are on GitHub: **https://github.com/thiyagatrev/unified-prefs**.
 
 If you have tried something similar, especially on real devices or with Release builds, I would love to compare numbers.
+
+---
+
+☕ **Liked this experiment?** Every benchmark here ran on tea and curiosity. If it saved you a migration headache, [buy me a tea](https://buymeatea.in/thiyagarajandhanapal) and fuel the next one.
