@@ -260,7 +260,7 @@ In the heavy profile, the old iOS plist was 4.8 MB on disk. Every write to it ma
 
 > Attempting to store >= 4194304 bytes of data in CFPreferences/NSUserDefaults on this platform is invalid. This is a bug in [your app] or a library it uses.
 
-The values were only 2.4 MB, but a binary plist stores any string with a single non-ASCII character as UTF-16. A few Tamil words in a cached JSON response were enough to double its size and cross the line. On the simulator the writes were still kept, but "invalid" is not something I would ship on. DataStore held the same values in 2.4 MB with no complaint.
+**Why the plist was twice the size of its contents.** `UserDefaults` persists to a binary property list, which stores a string as single-byte ASCII only when every character in it is ASCII. A string containing any other character, such as an emoji or a Tamil letter, is stored entirely as UTF-16, at two bytes per character. The cached JSON responses in the heavy profile were predominantly ASCII but contained a small number of Tamil words, so each was stored at roughly twice its size. The resulting 4.8 MB file exceeds the 4 MiB (4,194,304-byte) threshold that iOS reports as invalid. The simulator still persisted the writes; however, behaviour the platform classifies as invalid should not be relied on in production. DataStore encodes strings as UTF-8 and stored the same data in 2.4 MB without warnings.
 
 ---
 
