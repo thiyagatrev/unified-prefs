@@ -151,17 +151,15 @@ With the three demo keys, yes, on both the Android emulator and the iOS simulato
 
 But three keys prove almost nothing about a real app. So I generated **200 preferences** of every type:
 
-| Type | Count | What they look like |
-|---|---|---|
-| Boolean | 70 | feature flags |
-| Int | 40 | counters, including `Int.MIN_VALUE` and `MAX_VALUE` |
-| Long | 24 | millisecond timestamps, plus the `Long` extremes |
-| Float | 16 | ratios |
-| Double | 8 | coordinates (iOS only: `SharedPreferences` has no Double) |
-| Short strings | 30 | labels, including empty, emoji, Tamil, `<`, `&`, quotes, newlines |
-| Medium strings | 6 | 1–4 KB tokens and small JSON |
-| Large strings | 2 | cached JSON responses |
-| String sets | 4 | 3–50 tags each |
+- **70 Booleans:** feature flags
+- **40 Ints:** counters, including `Int.MIN_VALUE` and `MAX_VALUE`
+- **24 Longs:** millisecond timestamps, plus the `Long` extremes
+- **16 Floats:** ratios
+- **8 Doubles:** coordinates (iOS only: `SharedPreferences` has no Double)
+- **30 short strings:** labels, including empty, emoji, Tamil, `<`, `&`, quotes and newlines
+- **6 medium strings:** 1–4 KB tokens and small JSON
+- **2 large strings:** cached JSON responses
+- **4 string sets:** 3–50 tags each
 
 I ran it in two profiles over the same keys: a **typical** app (about 77 KB of values) and a **heavy** app (about 2.4 MB, the app that caches API responses in preferences; we have all seen one).
 
@@ -177,16 +175,23 @@ That was the result I cared about most. A preferences migration that quietly rou
 
 Medians, Debug builds, Android emulator and iOS simulator. Lower is better.
 
-| | Android typical | Android heavy | iOS typical | iOS heavy |
-|---|---|---|---|---|
-| First access, DataStore | 121 ms | **110 ms** | 14 ms | 52 ms |
-| First read, old store | 112 ms | **677 ms** | 4.3 ms | 5.7 ms |
-| One write, DataStore | 55 ms | 123 ms | 11 ms | 73 ms |
-| One write, old store | 15 ms | 61 ms | — * | — * |
-| Migration launch (once) | 163 ms | 776 ms | 20 ms | 65 ms |
-| File on disk, DataStore vs old | 82 vs 142 KB | 2.4 vs 4.3 MB | 82 vs 149 KB | 2.4 vs 4.8 MB |
+**Android** (typical / heavy):
 
-\* `UserDefaults` hands writes to a separate system process, so its write time is not comparable.
+- **First access, DataStore:** 121 ms / 110 ms
+- **First read, `SharedPreferences`:** 112 ms / 677 ms
+- **One write, DataStore:** 55 ms / 123 ms
+- **One write, `SharedPreferences.commit()`:** 15 ms / 61 ms
+- **Migration launch, once:** 163 ms / 776 ms
+- **File on disk, DataStore vs XML:** 82 vs 142 KB / 2.4 vs 4.3 MB
+
+**iOS** (typical / heavy):
+
+- **First access, DataStore:** 14 ms / 52 ms
+- **First read, `UserDefaults`:** 4.3 ms / 5.7 ms
+- **One write, DataStore:** 11 ms / 73 ms
+- **One write, `UserDefaults`:** not comparable, because `UserDefaults` hands writes to a separate system process
+- **Migration launch, once:** 20 ms / 65 ms
+- **File on disk, DataStore vs plist:** 82 vs 149 KB / 2.4 vs 4.8 MB
 
 What I take from this:
 
