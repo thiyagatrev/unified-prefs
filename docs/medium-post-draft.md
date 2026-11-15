@@ -10,6 +10,8 @@
 - Android start-up stayed about the same at normal sizes (plus ~13 ms to create the key objects) and got about 6× faster with megabytes stored.
 - iOS start-up got about 13 ms slower than `UserDefaults` at normal sizes, key setup included.
 
+*Building this took a lot of tea. If it helps you, you can [buy me one](https://buymeatea.in/thiyagarajandhanapal).*
+
 ---
 
 If you are moving an existing Android app and an existing iOS app towards Kotlin Multiplatform, preferences are one of the first things that hurt. Both apps already have years of user data in them: a dark-mode flag, an onboarding state, a cached token, a launch counter. The Android side reads it from `SharedPreferences`, the iOS side from `NSUserDefaults`, and the new shared Compose screens need to read and write the same values. This post assumes your apps already ship a Kotlin Multiplatform framework; adding one only for preferences is a different trade-off.
@@ -307,4 +309,8 @@ If you have tried something similar, especially on real devices or with Release 
 
 ---
 
-☕ **Liked this experiment?** Every benchmark here ran on tea and curiosity. If it saved you a migration headache, [buy me a tea](https://buymeatea.in/thiyagarajandhanapal) and fuel the next one.
+## ☕ Fuel the next experiment
+
+The next test is the one this post could not run: Release builds on real Android and iOS phones. If this saved you a migration headache, a cup of tea helps fund it.
+
+## [Buy me a tea →](https://buymeatea.in/thiyagarajandhanapal)
