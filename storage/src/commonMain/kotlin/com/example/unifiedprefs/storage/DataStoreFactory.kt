@@ -12,7 +12,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import okio.Path.Companion.toPath
 
-fun createDataStore(
+internal fun createDataStore(
     migrations: List<DataMigration<Preferences>>,
     scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     producePath: () -> String,
