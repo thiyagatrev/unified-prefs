@@ -82,6 +82,26 @@ Each step below changes one passage. The quoted text is the copy to use.
 - [ ] **Step 4: State the audience.** At the end of the first paragraph, add: `This post assumes your apps already ship a Kotlin Multiplatform framework; adding one only for preferences is a different trade-off.`
 - [ ] **Step 5: Add "Why not an existing library?"** as a paragraph after "The usual first instinct…":
   `There are good multiplatform settings libraries, and most of them do exactly that: one API over each platform's own store. I wanted to test the other end state, where both apps end up on the same store and file format, so a value only ever has one home.`
+- [ ] **Step 5b: Add "Why DataStore?"** as a short section right before "The idea in one picture":
+  ```
+  ### Why DataStore?
+
+  I wanted the end state to depend on as little as possible:
+
+  - **It is AndroidX.** Google maintains it, and its Preferences flavour officially supports Kotlin Multiplatform, Android and iOS included.
+  - **Half the migration already exists.** DataStore ships `SharedPreferencesMigration`, so only iOS needed a migration written by hand.
+  - **It covers the types both old stores hold:** Boolean, Int, Long, Float, Double, String and string sets.
+  - **Writes are atomic.** It writes a temporary file and renames it, so a crash mid-save leaves the old file intact rather than a half-written one.
+  - **No new native library.** On iOS it runs as Kotlin inside the framework the app already ships.
+
+  What I set aside:
+  - **a wrapper over each platform's store** (it keeps two stores);
+  - **a native memory-mapped key-value store** (fast, but another native dependency to vet and maintain on both platforms);
+  - **a database such as SQLDelight or Room** (more than key-value preferences need);
+  - **a hand-written file format** (I would be rebuilding what DataStore already does).
+  ```
+  Constraint: name no vendor of a library the team excluded; describe alternatives by kind, as above.
+
 - [ ] **Step 6: Address `runBlocking` next to the repository snippet.** After the paragraph that starts "The saver runs on a single-threaded scope", add:
   `Yes, that is runBlocking, and the first access happens at app start on the main thread in this sample. It blocks once: about 110–120 ms on the Android emulator and 14–52 ms on the iOS simulator in my runs, and longer on the one launch that migrates. If that matters for your start-up, warm the store up on a background thread before the first read; more on that below.`
 - [ ] **Step 7: Add singleton and process scope after rule 1 of "Four rules":**
