@@ -330,12 +330,12 @@ Sizes must fall within typical 30–120 KB and heavy 2.0–3.2 MB. Throughout, K
   - `countsMatch`: per-type counts equal Global constraints.
   - `namesUniqueAndAscii`.
   - `deterministic`: two generations give identical bytes for the XML, the plist and the Kotlin file.
-  - `xmlRoundTrip`: parse `app_prefs.xml` with `xml.etree` and get back every value, including `<`, `&`, quotes, newlines, emoji and Tamil.
+  - `xmlRoundTrip`: parse `app_prefs.xml` with `xml.etree` and get back every value, including `<`, `&`, quotes, newlines, emoji and non-Latin.
   - `plistRoundTrip`: `plistlib.loads` gives every value.
   - `floatsRoundTrip`: `struct.pack('>f', float(text))` of every XML float equals the generated bits.
   - `sizesInRange`: per R7.
   - `checksumVector`: R4's vector gives `226e901c9354c740`, and the empty list gives `cbf29ce484222325`.
-  - `stringsCoverSpecials`: at least one short string contains each of `<`, `&`, `"`, `\n`, an emoji and a Tamil letter, and at least one is empty.
+  - `stringsCoverSpecials`: at least one short string contains each of `<`, `&`, `"`, `\n`, an emoji and a non-Latin letter, and at least one is empty.
   - `intExtremes`: Int includes `-2147483648`, `2147483647` and `0`; Long includes `-9223372036854775808` and `9223372036854775807`.
   - `setsAscii`: every set element is ASCII.
 - [ ] **Step 2:** Run `python3 -I tools/genprefs.py --self-check`. Expected: FAIL (nothing implemented).

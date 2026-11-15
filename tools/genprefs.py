@@ -51,7 +51,7 @@ SPECIALS = [
 ]
 WORDS = ("alpha beta gamma delta sigma omega pixel orbit river stone cloud ember maple quartz lunar "
          "solar harbor meadow summit tundra violet willow zephyr").split()
-TAMIL = ["வணக்கம்", "நன்றி", "தமிழ்"]
+NON_LATIN = ["வணக்கம்", "நன்றி", "தமிழ்"]
 EMOJI = ["\U0001F64F", "\U0001F680", "\U0001F389", "✨"]
 TAG_WORDS = ["beta", "gold", "new", "sync", "pinned", "cache", "ui", "a", "z"]
 
@@ -70,7 +70,7 @@ def short_string(rng, i):
         return SPECIALS[i]
     parts = [rng.choice(WORDS) for _ in range(rng.randint(1, 5))]
     if rng.random() < 0.25:
-        parts.append(rng.choice(TAMIL))
+        parts.append(rng.choice(NON_LATIN))
     if rng.random() < 0.2:
         parts.append(rng.choice(EMOJI))
     return " ".join(parts)
@@ -81,7 +81,7 @@ def medium_string(rng, i):
         raw = bytes(rng.getrandbits(8) for _ in range(rng.randint(800, 3000)))
         return base64.b64encode(raw).decode("ascii")
     obj = {"user": rng.choice(WORDS), "scopes": [rng.choice(WORDS) for _ in range(rng.randint(2, 8))],
-           "exp": rng.randint(1_700_000_000, 1_900_000_000), "note": rng.choice(TAMIL) + " " + rng.choice(EMOJI),
+           "exp": rng.randint(1_700_000_000, 1_900_000_000), "note": rng.choice(NON_LATIN) + " " + rng.choice(EMOJI),
            "blob": base64.b64encode(bytes(rng.getrandbits(8) for _ in range(rng.randint(800, 2700)))).decode()}
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
@@ -92,7 +92,7 @@ def large_string(rng, target):
     n = 0
     while size < target:
         item = {"id": n, "title": " ".join(rng.choice(WORDS) for _ in range(rng.randint(2, 6)))
-                + (" " + rng.choice(TAMIL) if rng.random() < 0.1 else ""),
+                + (" " + rng.choice(NON_LATIN) if rng.random() < 0.1 else ""),
                 "tags": [rng.choice(WORDS) for _ in range(rng.randint(1, 4))],
                 "score": round(rng.random() * 100, 3)}
         text = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
@@ -375,7 +375,7 @@ def check_specials():
     for ch in ("<", "&", '"', "\n"):
         assert any(ch in s for s in shorts), "no short string with " + repr(ch)
     assert any(ord(c) > 0xFFFF for s in shorts for c in s), "no emoji"
-    assert any("஀" <= c <= "௿" for s in shorts for c in s), "no Tamil"
+    assert any("஀" <= c <= "௿" for s in shorts for c in s), "no non-Latin text"
     assert "" in shorts, "no empty string"
 
 

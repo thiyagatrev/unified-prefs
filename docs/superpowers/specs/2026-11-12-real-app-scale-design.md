@@ -64,7 +64,7 @@ gives byte-identical output.
 | String set | 4 | 3–50 short strings each |
 | **Total** | **200** | |
 
-Strings include non-ASCII text (emoji, Tamil, CJK) and characters XML and plists must escape
+Strings include non-ASCII text (emoji, non-Latin scripts) and characters XML and plists must escape
 (`<`, `&`, quotes, newlines), because real names and cached JSON contain them.
 
 Names look like real keys (`feature_flag_0042`, `last_sync_ts_017`). The two profiles use the same

@@ -184,7 +184,7 @@ old store of each before-state build:
 | Long | 24 | millisecond timestamps (2015–2030), plus `Long.MIN_VALUE`, `Long.MAX_VALUE`, 0 |
 | Float | 16 | 32-bit values |
 | Double | 8 | iOS only; `SharedPreferences` has no Double type |
-| String, short | 30 | includes empty, emoji, Tamil, `<`, `&`, quotes, newline, tab, `]]>` |
+| String, short | 30 | includes empty, emoji, non-English text, `<`, `&`, quotes, newline, tab, `]]>` |
 | String, medium | 6 | 1–4 KB tokens and small JSON |
 | String, large | 2 | typical: 16–38 KB JSON; heavy: 1.0–1.45 MB JSON |
 | String set | 4 | 3–50 entries |
@@ -205,7 +205,7 @@ Each run (`scripts/bench.sh`):
 
 After migration, a checksum over all 200 values matched the generator's expected value on both
 platforms, in both profiles, on all 48 DataStore launches. The extreme integers, the 32-bit floats,
-the emoji and Tamil text, the XML special characters and the megabyte-sized strings all arrived
+the emoji and non-English text, the XML special characters and the megabyte-sized strings all arrived
 unchanged.
 
 One limit of the check: a value equal to its default (about 35 of the 200, mostly `false`, `0` and
@@ -276,7 +276,7 @@ How to read the columns:
    *"Attempting to store >= 4194304 bytes of data in CFPreferences/NSUserDefaults on this platform
    is invalid. This is a bug in iosApp or a library it uses."*
    On the simulator the writes were still kept: the benchmark counter went up on every run. It
-   crosses 4 MB only because a few Tamil characters make each 1.2 MB JSON string UTF-16. The same
+   crosses 4 MB only because a few non-ASCII characters make each 1.2 MB JSON string UTF-16. The same
    cache in plain ASCII would be about 2.5 MB. DataStore stored the same values in 2.4 MB with no
    warning.
 8. **The migration costs one slower launch, once.** On Android 163 ms typical and 776 ms heavy,

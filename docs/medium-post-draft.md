@@ -205,7 +205,7 @@ But three keys prove almost nothing about a real app. So I generated **200 prefe
 - **24 Longs:** millisecond timestamps, plus the `Long` extremes
 - **16 Floats:** ratios
 - **8 Doubles:** coordinates (iOS only: `SharedPreferences` has no Double)
-- **30 short strings:** labels, including empty, emoji, Tamil, `<`, `&`, quotes and newlines
+- **30 short strings:** labels, including empty strings, emoji, non-English text, `<`, `&`, quotes and newlines
 - **6 medium strings:** 1–4 KB tokens and small JSON
 - **2 large strings:** cached JSON responses
 - **4 string sets:** 3–50 tags each
@@ -216,7 +216,7 @@ For each run a script installed the old build, wrote the old store, **launched t
 
 ### Every value arrived exactly
 
-After every migration, a checksum over all 200 values matched the expected one, on both platforms, in both profiles, on all 48 launches. Extreme integers, 32-bit floats, emoji, Tamil text, XML special characters and megabyte-sized JSON all came through byte for byte.
+After every migration, a checksum over all 200 values matched the expected one, on both platforms, in both profiles, on all 48 launches. Extreme integers, 32-bit floats, emoji, non-English text, XML special characters and megabyte-sized JSON all came through byte for byte.
 
 That was the result I cared about most. A preferences migration that quietly rounds a float or drops a key is far worse than a slow one.
 
@@ -260,7 +260,7 @@ In the heavy profile, the old iOS plist was 4.8 MB on disk. Every write to it ma
 
 > Attempting to store >= 4194304 bytes of data in CFPreferences/NSUserDefaults on this platform is invalid. This is a bug in [your app] or a library it uses.
 
-**Why the plist was twice the size of its contents.** `UserDefaults` persists to a binary property list, which stores a string as single-byte ASCII only when every character in it is ASCII. A string containing any other character, such as an emoji or a Tamil letter, is stored entirely as UTF-16, at two bytes per character. The cached JSON responses in the heavy profile were predominantly ASCII but contained a small number of Tamil words, so each was stored at roughly twice its size. The resulting 4.8 MB file exceeds the 4 MiB (4,194,304-byte) threshold that iOS reports as invalid. The simulator still persisted the writes; however, behaviour the platform classifies as invalid should not be relied on in production. DataStore encodes strings as UTF-8 and stored the same data in 2.4 MB without warnings.
+**Why the plist was twice the size of its contents.** `UserDefaults` persists to a binary property list, which stores a string as single-byte ASCII only when every character in it is ASCII. A string containing any other character, such as an emoji or an accented or non-Latin letter, is stored entirely as UTF-16, at two bytes per character. The cached JSON responses in the heavy profile were predominantly ASCII but contained a small number of non-ASCII characters, so each was stored at roughly twice its size. The resulting 4.8 MB file exceeds the 4 MiB (4,194,304-byte) threshold that iOS reports as invalid. The simulator still persisted the writes; however, behaviour the platform classifies as invalid should not be relied on in production. DataStore encodes strings as UTF-8 and stored the same data in 2.4 MB without warnings.
 
 ---
 
